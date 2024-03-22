@@ -1,0 +1,20 @@
+﻿name: Build
+on:
+  workflow_call: 
+    inputs:
+      parameter:
+        type: string
+        default: somedefault
+    outputs:
+      parameter:
+        value: ${{ jobs.job-name.outputs.output-value }}
+jobs:
+  job-name:
+    runs-on: [linux]
+    outputs: 
+      output-value: ${{ steps.step-name.outputs.output-value }}
+    env:
+      ENV_VAR: ${{ vars.parameter }}
+    steps:
+      - name: Start process
+        if: always() || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
