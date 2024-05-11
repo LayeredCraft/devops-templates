@@ -18,7 +18,7 @@ jobs:
           dotnet-version: ${{ inputs.dotnet-version}}
 
       - name: Setup NuGet
-        uses: NuGet/setup-nuget@2
+        uses: nuget/setup-nuget@v2
         with:
           nuget-api-key: ${{ secrets.NUGET_API_KEY }}
           nuget-version: latest
