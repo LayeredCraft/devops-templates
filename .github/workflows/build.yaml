@@ -2,19 +2,35 @@
 on:
   workflow_call: 
     inputs:
-      parameter:
+      dotnet-version:
         type: string
-        default: somedefault
-    outputs:
-      parameter:
-        value: ${{ jobs.job-name.outputs.output-value }}
+        default: "8.0.100"
 jobs:
-  job-name:
-    runs-on: [linux]
-    outputs: 
-      output-value: ${{ steps.step-name.outputs.output-value }}
-    env:
-      ENV_VAR: ${{ vars.parameter }}
+  build:
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Start process
-        if: always() || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      - uses: actions/checkout@v2
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version}}
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@2
+        with:
+          nuget-api-key: ${{ secrets.NUGET_API_KEY }}
+          nuget-version: latest
+      
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-restore
+
+      - name: Pack
+        run: dotnet pack --configuration Release -o artifacts --no-build --version-suffix ${{ github.run_number }}
