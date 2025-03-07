@@ -1,4 +1,4 @@
-name: PR Build
+name: Build and Deploy
 
 on:
   workflow_call:
@@ -11,12 +11,12 @@ on:
         description: "Solution file name"
         required: false
         type: string
-      functionPath:
-        description: "Path to the function project"
+      apiPath:
+        description: "Path to the API project"
         required: false
         type: string
-      functionName:
-        description: "Name of the function"
+      apiName:
+        description: "Name of the API"
         required: false
         type: string
       buildPlatform:
@@ -59,15 +59,21 @@ on:
         required: false
         default: true
         type: boolean
-        
+      stackName:
+        description: "Name of the AWS CDK stack"
+        required: false
+        type: string
+
 permissions:
   id-token: write
   contents: write
-
+  
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    
+    env:
+      outputPath: ${{ github.workspace }}/${{ inputs.outputPath }}
+
     steps:
       - name: Set Default Output Path If Not Provided
         run: |
@@ -76,7 +82,7 @@ jobs:
           else
             echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
-        
+
       - name: Checkout Repository
         uses: actions/checkout@v2
 
@@ -100,7 +106,7 @@ jobs:
         run: |
           dotnet new tool-manifest
           dotnet tool install Amazon.Lambda.Tools
-       
+
       - name: Build and Publish Blazor WebAssembly
         if: inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
@@ -119,6 +125,23 @@ jobs:
         if: inputs.runCdk == true
         run: npm install aws-cdk
 
+      - name: Determine Deployment Environment
+        id: set-env
+        run: |
+          STACK_BASE=${{ inputs.stackName }}
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "DEPLOY_ENV=$STACK_BASE-prod" >> $GITHUB_ENV
+            echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV  # Extract tag name as release version
+          else
+            echo "DEPLOY_ENV=$STACK_BASE-dev" >> $GITHUB_ENV
+            BUILD_NUMBER=${{ github.run_number }}
+            BASE_VERSION=$(date +'%Y.%m.%d')
+            echo "RELEASE_VERSION=v${BASE_VERSION}.${BUILD_NUMBER}" >> $GITHUB_ENV
+          fi
+
+          echo "Deployment Environment: $DEPLOY_ENV"
+          echo "Release Version: $RELEASE_VERSION"
+
       - name: Configure AWS Credentials via OIDC
         if: inputs.runCdk == true
         uses: aws-actions/configure-aws-credentials@v4
@@ -127,6 +150,16 @@ jobs:
           aws-region: us-east-1
           role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
 
-      - name: Run AWS CDK Synth (Dry Run)
+      - name: Run AWS CDK Deploy
         if: inputs.runCdk == true
-        run:  npx aws-cdk synth
+        run: npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} ${{ env.DEPLOY_ENV }}
+
+      - name: Tag Branch with Release Version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          
+          git tag ${{ env.RELEASE_VERSION }}  # ✅ Create tag
+          git push origin ${{ env.RELEASE_VERSION }}  # ✅ Push tag to GitHub
