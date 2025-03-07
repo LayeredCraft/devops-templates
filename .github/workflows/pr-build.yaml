@@ -42,7 +42,7 @@ on:
       outputPath:
         description: "Output directory for builds"
         required: false
-        default: "${{ github.workspace }}/output"
+        default: "${{ github.workspace }}/publish"
         type: string
       hasTests: # ✅ New input to control test execution
         description: "Determines if tests should be run"
