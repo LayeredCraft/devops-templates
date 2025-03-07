@@ -42,7 +42,7 @@ on:
       outputPath:
         description: "Output directory for builds"
         required: false
-        default: "${{ github.workspace }}/output"
+        default: "${{ github.workspace }}/publish"
         type: string
       hasTests: # ✅ New input to control test execution
         description: "Determines if tests should be run"
@@ -59,6 +59,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Ensure Output Directory Exists
+        run: sudo mkdir -p "${{ inputs.outputPath }}"        
+        
       - name: Checkout Repository
         uses: actions/checkout@v2
 
@@ -84,11 +87,9 @@ jobs:
        
       - name: Build and Publish Blazor WebAssembly
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore
-#          --output ${{ inputs.outputPath }}
 
       - name: Build and Package Lambda Function Code
         run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }}
-#          --output-package ${{ inputs.functionName }}.zip
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
