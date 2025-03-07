@@ -86,7 +86,7 @@ jobs:
           dotnet tool install Amazon.Lambda.Tools
        
       - name: Build and Publish Blazor WebAssembly
-        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
+        run: sudo dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
 
       - name: Build and Package Lambda Function Code
         run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ inputs.functionName }}.zip
