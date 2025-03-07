@@ -49,7 +49,12 @@ on:
         required: false
         default: false
         type: boolean
-
+      runCdk:  # ✅ New input to control CDK execution
+        description: "Determines if AWS CDK steps should be run"
+        required: false
+        default: true
+        type: boolean
+        
 permissions:
   id-token: write
   contents: write
@@ -86,25 +91,31 @@ jobs:
         run: dotnet test --no-restore
 
       - name: Setup Local .NET Tools
+        if: inputs.functionPath != '' && inputs.functionName != ''
         run: |
           dotnet new tool-manifest
           dotnet tool install Amazon.Lambda.Tools
        
       - name: Build and Publish Blazor WebAssembly
+        if: inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
 
       - name: Build and Package Lambda Function Code
+        if: inputs.functionPath != '' && inputs.functionName != ''
         run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
 
       - name: Setup Node.js
+        if: inputs.runCdk == true
         uses: actions/setup-node@v4
         with:
           node-version: '18.x'
 
       - name: Install AWS CDK Locally
+        if: inputs.runCdk == true
         run: npm install aws-cdk
 
       - name: Configure AWS Credentials via OIDC
+        if: inputs.runCdk == true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           audience: sts.amazonaws.com
@@ -112,4 +123,5 @@ jobs:
           role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
 
       - name: Run AWS CDK Synth (Dry Run)
+        if: inputs.runCdk == true
         run:  npx aws-cdk synth
