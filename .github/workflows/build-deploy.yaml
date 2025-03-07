@@ -182,7 +182,7 @@ jobs:
           
 
       - name: Configure AWS Credentials via OIDC
-        if: inputs.runCdk == true
+        if: inputs.runCdk == true || inputs.serverlessDeploy == true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           audience: sts.amazonaws.com
