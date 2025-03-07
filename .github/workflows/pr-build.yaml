@@ -1,0 +1,95 @@
+name: PR Build
+
+on:
+  workflow_call:
+    inputs:
+      webPath:
+        description: "Path to the Blazor WebAssembly project"
+        required: false
+        type: string
+      solution:
+        description: "Solution file name"
+        required: false
+        type: string
+      functionPath:
+        description: "Path to the function project"
+        required: false
+        type: string
+      functionName:
+        description: "Name of the function"
+        required: false
+        type: string
+      buildPlatform:
+        description: "Build platform"
+        required: false
+        default: "Any CPU"
+        type: string
+      buildConfiguration:
+        description: "Build configuration"
+        required: false
+        default: "release"
+        type: string
+      dotnetVersion:
+        description: ".NET SDK version"
+        required: false
+        default: "9.0.x"
+        type: string
+      lambdaRuntimeVersion:
+        description: "AWS Lambda runtime version"
+        required: false
+        default: "net9.0"
+        type: string
+      outputPath:
+        description: "Output directory for builds"
+        required: false
+        default: "${{ github.workspace }}/publish"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ inputs.dotnetVersion }}
+
+      - name: Restore Dependencies
+        run: dotnet restore ${{ inputs.solution }}
+
+      - name: Setup Local .NET Tools
+        run: |
+          dotnet new tool-manifest
+          dotnet tool install Amazon.Lambda.Tools
+
+      - name: Build and Publish Blazor WebAssembly
+        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restor --output ${{ inputs.outputPath }}
+
+      - name: Build and Package Lambda Function Code
+        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ inputs.outputPath }}/${{ inputs.functionName }}.zip
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install AWS CDK Locally
+        run: npm install aws-cdk
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
+
+      - name: Run AWS CDK Synth (Dry Run)
+        run:  npx aws-cdk synth
