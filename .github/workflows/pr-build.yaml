@@ -91,7 +91,7 @@ jobs:
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
 
       - name: Build and Package Lambda Function Code
-        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ inputs.functionName }}.zip
+        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ inputs.outputPath }}/${{ inputs.functionName }}.zip
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
