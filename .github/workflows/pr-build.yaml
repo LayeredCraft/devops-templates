@@ -63,8 +63,9 @@ jobs:
         run: |
           sudo mkdir -p "${{ inputs.outputPath }}"
           sudo chmod -R 777 "${{ inputs.outputPath }}"
-          sudo pwd
-          sudo ls -la
+          echo "Directory created at: ${{ inputs.outputPath }}"
+          ls -ld "${{ inputs.outputPath }}"
+          ls -la "${{ inputs.outputPath }}"
         
       - name: Checkout Repository
         uses: actions/checkout@v2
