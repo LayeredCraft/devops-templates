@@ -11,11 +11,11 @@ on:
         description: "Solution file name"
         required: false
         type: string
-      apiPath:
+      functionPath:
         description: "Path to the API project"
         required: false
         type: string
-      apiName:
+      functionName:
         description: "Name of the API"
         required: false
         type: string
