@@ -61,12 +61,17 @@ jobs:
     steps:
       - name: Ensure Output Directory Exists
         run: |
-          sudo mkdir -p "${{ inputs.outputPath }}"
-          sudo chmod -R 777 "${{ inputs.outputPath }}"
-          echo "Directory created at: ${{ inputs.outputPath }}"
-          ls -ld "${{ inputs.outputPath }}"
-          ls -la "${{ inputs.outputPath }}"
-        
+#          sudo mkdir -p "${{ inputs.outputPath }}"
+#          sudo chmod -R 777 "${{ inputs.outputPath }}"
+#          echo "Directory created at: ${{ inputs.outputPath }}"
+#          ls -ld "${{ inputs.outputPath }}"
+#          ls -la "${{ inputs.outputPath }}"
+          sudo mkdir -p "${{ github.workspace }}/publish"
+          sudo chmod -R 777 "${{ github.workspace }}/publish"
+          echo "Directory created at: ${{ github.workspace }}/publish"
+          ls -ld "${{ github.workspace }}/publish"
+          ls -la "${{ github.workspace }}/publish"        
+
       - name: Checkout Repository
         uses: actions/checkout@v2
 
