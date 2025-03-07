@@ -44,6 +44,11 @@ on:
         required: false
         default: "${{ github.workspace }}/publish"
         type: string
+      hasTests: # ✅ New input to control test execution
+        description: "Determines if tests should be run"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -64,6 +69,13 @@ jobs:
 
       - name: Restore Dependencies
         run: dotnet restore ${{ inputs.solution }}
+
+      - name: Build Code
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test Code
+        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
+        run: dotnet test --no-restore
 
       - name: Setup Local .NET Tools
         run: |
