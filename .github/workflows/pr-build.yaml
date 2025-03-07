@@ -109,4 +109,6 @@ jobs:
           role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
 
       - name: Run AWS CDK Synth (Dry Run)
-        run:  npx aws-cdk synth
+        run:  |
+          ls -R
+          npx aws-cdk synth
