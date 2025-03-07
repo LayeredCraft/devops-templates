@@ -82,6 +82,9 @@ jobs:
           dotnet new tool-manifest
           dotnet tool install Amazon.Lambda.Tools
 
+      - name: Ensure Output Directory Exists
+        run: mkdir -p "${{ inputs.outputPath }}"
+        
       - name: Build and Publish Blazor WebAssembly
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
 
