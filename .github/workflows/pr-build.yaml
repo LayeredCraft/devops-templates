@@ -60,7 +60,9 @@ jobs:
     
     steps:
       - name: Ensure Output Directory Exists
-        run: sudo mkdir -p "${{ inputs.outputPath }}"        
+        run: |
+          sudo mkdir -p "${{ inputs.outputPath }}"
+          sudo chmod -R 777 "${{ inputs.outputPath }}"
         
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -86,7 +88,7 @@ jobs:
           dotnet tool install Amazon.Lambda.Tools
        
       - name: Build and Publish Blazor WebAssembly
-        run: sudo dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
+        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ inputs.outputPath }}
 
       - name: Build and Package Lambda Function Code
         run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ inputs.functionName }}.zip
