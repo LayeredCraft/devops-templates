@@ -201,6 +201,7 @@ jobs:
         run: npx serverless deploy --stage ${{ env.DEPLOY_ENV }}
 
       - name: Tag Branch with Release Version
+        if: startsWith(github.ref, 'refs/tags/') == false  # ✅ Run only if NOT a tag build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
