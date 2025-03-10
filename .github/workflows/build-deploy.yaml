@@ -109,7 +109,7 @@ jobs:
       - name: Setup Local .NET Tools
         if: inputs.functionPath != '' && inputs.functionName != ''
         run: |
-          dotnet new tool-manifest
+          dotnet new tool-manifest --force
           dotnet tool install Amazon.Lambda.Tools
 
       - name: Build and Publish Blazor WebAssembly
