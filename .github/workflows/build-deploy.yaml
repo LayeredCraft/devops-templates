@@ -191,6 +191,12 @@ jobs:
 
       - name: Run AWS CDK Deploy
         if: inputs.runCdk == true
+        # ✅ Pass the GitHub App secrets to the CDK workflow
+        env:
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GH_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
         run: npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} ${{ env.DEPLOY_ENV }}
 
       - name: Run Serverless Deploy
