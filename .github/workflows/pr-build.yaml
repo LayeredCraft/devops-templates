@@ -82,13 +82,22 @@ jobs:
         
       - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Decode GitHub App Secret
+        
+      - name: Debug Secret in Repo B
         run: |
-          echo "GH_APP_ID=$(echo -n '${{ secrets.GH_APP_ID }}' | base64 --decode)" >> $GITHUB_ENV
-
-      - name: Debug Secret (Masked)
-        run: | 
-          echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
+          if [[ -n "${{ secrets.GH_APP_ID }}" ]]; then
+            echo "GH_APP_ID is received ✅"
+          else
+            echo "GH_APP_ID is EMPTY ❌"
+          fi
+          
+#      - name: Decode GitHub App Secret
+#        run: |
+#          echo "GH_APP_ID=$(echo -n '${{ secrets.GH_APP_ID }}' | base64 --decode)" >> $GITHUB_ENV
+#
+#      - name: Debug Secret (Masked)
+#        run: | 
+#          echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
 #      - name: Setup .NET
 #        uses: actions/setup-dotnet@v3
 #        with:
