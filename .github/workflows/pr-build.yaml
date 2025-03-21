@@ -73,9 +73,11 @@ jobs:
         run: |
           echo "TMP_APP_ID: ${TMP_APP_ID}"
           echo "TMD_APP_ID: ${TMD_APP_ID}"
+          echo "NUGET_API_KEY: ${NUGET_API_KEY}"
         env:
           TMP_APP_ID: ${{ secrets.TMP_APP_ID }}
           TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 #
 #      - name: Set Default Output Path If Not Provided
 #        run: |
