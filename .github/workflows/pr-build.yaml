@@ -2,6 +2,9 @@ name: PR Build
 
 on:
   workflow_call:
+    secrets:
+      GH_APP_ID:
+        required: false
     inputs:
       webPath:
         description: "Path to the Blazor WebAssembly project"
@@ -59,10 +62,6 @@ on:
         required: false
         default: true
         type: boolean
-      ghAppId:
-        description: "GitHub App ID"
-        required: false
-        type: string
         
 permissions:
   id-token: write
@@ -85,7 +84,7 @@ jobs:
         uses: actions/checkout@v2
       - name: Decode GitHub App Secret
         run: |
-          echo "GH_APP_ID=$(echo -n '${{ inputs.ghAppId }}' | base64 --decode)" >> $GITHUB_ENV
+          echo "GH_APP_ID=$(echo -n '${{ secrets.GH_APP_ID }}' | base64 --decode)" >> $GITHUB_ENV
 
       - name: Debug Secret (Masked)
         run: | 
