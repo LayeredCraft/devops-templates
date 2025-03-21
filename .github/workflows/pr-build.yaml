@@ -69,89 +69,99 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Set Default Output Path If Not Provided
+      - name: Debug Secret Values (Masked)
         run: |
-          if [ -z "${{ inputs.outputPath }}" ]; then
-            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
-          else
-            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
-          fi
-        
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: ${{ inputs.dotnetVersion }}
-
-      - name: Restore Dependencies
-        run: dotnet restore ${{ inputs.solution }}
-
-      - name: Build Code
-        run: dotnet build --configuration Release --no-restore
-
-      - name: Test Code
-        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
-        run: dotnet test --no-restore
-
-      - name: Setup Local .NET Tools
-        if: inputs.functionPath != '' && inputs.functionName != ''
-        run: |
-          dotnet new tool-manifest --force
-          dotnet tool install Amazon.Lambda.Tools
-       
-      - name: Build and Publish Blazor WebAssembly
-        if: inputs.webPath != ''
-        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
-
-      - name: Build and Package Lambda Function Code
-        if: inputs.functionPath != '' && inputs.functionName != ''
-        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
-
-      - name: Setup Node.js
-        if: inputs.runCdk == true
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.nodeVersion }}
-
-      - name: Install AWS CDK Locally
-        if: inputs.runCdk == true
-        run: npm install aws-cdk
-
-      - name: Configure AWS Credentials via OIDC
-        if: inputs.runCdk == true
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          audience: sts.amazonaws.com
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
-      
-#      - name: Set GitHub App Secrets Based on Deployment Type
-#        if: inputs.runCdk == true
-#        run: |
-#          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-#            echo "GH_APP_ID=${{ secrets.TMP_APP_ID }}" >> $GITHUB_ENV
-#            echo "GH_APP_INSTALLATION_ID=${{ secrets.TMP_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
-#            echo "GH_APP_PRIVATE_KEY=${{ secrets.TMP_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
-#            echo "GH_WEBHOOK_SECRET=${{ secrets.TMP_WEBHOOK_SECRET }}" >> $GITHUB_ENV
-#          else
-#            echo "GH_APP_ID=${{ secrets.TMD_APP_ID }}" >> $GITHUB_ENV
-#            echo "GH_APP_INSTALLATION_ID=${{ secrets.TMD_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
-#            echo "GH_APP_PRIVATE_KEY=${{ secrets.TMD_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
-#            echo "GH_WEBHOOK_SECRET=${{ secrets.TMD_WEBHOOK_SECRET }}" >> $GITHUB_ENV
-#          fi
-      
-      - name: Run AWS CDK Synth (Dry Run)
-        if: inputs.runCdk == true
-        # ✅ Pass the GitHub App secrets to the CDK workflow
+          echo "TMP_APP_ID: ${TMP_APP_ID:0:4}****"
+          echo "TMD_APP_ID: ${TMD_APP_ID:0:4}****"
+          echo "TMP_APP_PRIVATE_KEY: ${TMP_APP_PRIVATE_KEY:0:4}****"
         env:
           TMP_APP_ID: ${{ secrets.TMP_APP_ID }}
-          TMP_APP_INSTALLATION_ID: ${{ secrets.TMP_APP_INSTALLATION_ID }}
-          TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
-          TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
           TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
-          TMD_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
-          TMD_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
-          TMD_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
-        run: npx aws-cdk synth
+          TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
+#
+#      - name: Set Default Output Path If Not Provided
+#        run: |
+#          if [ -z "${{ inputs.outputPath }}" ]; then
+#            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
+#          else
+#            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
+#          fi
+#        
+#      - name: Checkout Repository
+#        uses: actions/checkout@v2
+#
+#      - name: Setup .NET
+#        uses: actions/setup-dotnet@v3
+#        with:
+#          dotnet-version: ${{ inputs.dotnetVersion }}
+#
+#      - name: Restore Dependencies
+#        run: dotnet restore ${{ inputs.solution }}
+#
+#      - name: Build Code
+#        run: dotnet build --configuration Release --no-restore
+#
+#      - name: Test Code
+#        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
+#        run: dotnet test --no-restore
+#
+#      - name: Setup Local .NET Tools
+#        if: inputs.functionPath != '' && inputs.functionName != ''
+#        run: |
+#          dotnet new tool-manifest --force
+#          dotnet tool install Amazon.Lambda.Tools
+#       
+#      - name: Build and Publish Blazor WebAssembly
+#        if: inputs.webPath != ''
+#        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
+#
+#      - name: Build and Package Lambda Function Code
+#        if: inputs.functionPath != '' && inputs.functionName != ''
+#        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
+#
+#      - name: Setup Node.js
+#        if: inputs.runCdk == true
+#        uses: actions/setup-node@v4
+#        with:
+#          node-version: ${{ inputs.nodeVersion }}
+#
+#      - name: Install AWS CDK Locally
+#        if: inputs.runCdk == true
+#        run: npm install aws-cdk
+#
+#      - name: Configure AWS Credentials via OIDC
+#        if: inputs.runCdk == true
+#        uses: aws-actions/configure-aws-credentials@v4
+#        with:
+#          audience: sts.amazonaws.com
+#          aws-region: us-east-1
+#          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
+#      
+##      - name: Set GitHub App Secrets Based on Deployment Type
+##        if: inputs.runCdk == true
+##        run: |
+##          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+##            echo "GH_APP_ID=${{ secrets.TMP_APP_ID }}" >> $GITHUB_ENV
+##            echo "GH_APP_INSTALLATION_ID=${{ secrets.TMP_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
+##            echo "GH_APP_PRIVATE_KEY=${{ secrets.TMP_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
+##            echo "GH_WEBHOOK_SECRET=${{ secrets.TMP_WEBHOOK_SECRET }}" >> $GITHUB_ENV
+##          else
+##            echo "GH_APP_ID=${{ secrets.TMD_APP_ID }}" >> $GITHUB_ENV
+##            echo "GH_APP_INSTALLATION_ID=${{ secrets.TMD_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
+##            echo "GH_APP_PRIVATE_KEY=${{ secrets.TMD_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
+##            echo "GH_WEBHOOK_SECRET=${{ secrets.TMD_WEBHOOK_SECRET }}" >> $GITHUB_ENV
+##          fi
+#      
+#      - name: Run AWS CDK Synth (Dry Run)
+#        if: inputs.runCdk == true
+#        # ✅ Pass the GitHub App secrets to the CDK workflow
+#        env:
+#          TMP_APP_ID: ${{ secrets.TMP_APP_ID }}
+#          TMP_APP_INSTALLATION_ID: ${{ secrets.TMP_APP_INSTALLATION_ID }}
+#          TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
+#          TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
+#          TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
+#          TMD_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
+#          TMD_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
+#          TMD_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
+#        run: npx aws-cdk synth
