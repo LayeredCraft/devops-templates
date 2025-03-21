@@ -2,6 +2,9 @@ name: PR Build
 
 on:
   workflow_call:
+    secrets:
+      GH_APP_ID:
+        required: false
     inputs:
       webPath:
         description: "Path to the Blazor WebAssembly project"
@@ -79,36 +82,13 @@ jobs:
         
       - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Debug Secret Availability
+      - name: Decode GitHub App Secret
         run: |
-          if [[ -n "${{ secrets.TMP_APP_ID }}" ]]; then
-            echo "TMP_APP_ID is set ✅"
-          else
-            echo "TMP_APP_ID is EMPTY ❌"
-          fi
+          echo "GH_APP_ID=$(echo -n '${{ secrets.GH_APP_ID }}' | base64 --decode)" >> $GITHUB_ENV
 
-          if [[ -n "${{ secrets.TMD_APP_ID }}" ]]; then
-            echo "TMD_APP_ID is set ✅"
-          else
-            echo "TMD_APP_ID is EMPTY ❌"
-          fi
-      - name: Set GitHub App ID Based on Deployment Type
-        id: set-secret
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "GH_APP_ID=$(echo -n '${{ secrets.TMP_APP_ID }}' | base64)" >> $GITHUB_ENV
-          else
-            echo "GH_APP_ID=$(echo -n '${{ secrets.TMD_APP_ID }}' | base64)" >> $GITHUB_ENV
-          fi
-
-      - name: Debug Environment Variable
-        run: |
-          if [[ -n "${{ env.GH_APP_ID }}" ]]; then
-            echo "GH_APP_ID is stored ✅"
-          else
-            echo "GH_APP_ID is EMPTY ❌"
-          fi
-
+      - name: Debug Secret (Masked)
+        run: | 
+          echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
 #      - name: Setup .NET
 #        uses: actions/setup-dotnet@v3
 #        with:
