@@ -2,9 +2,6 @@ name: PR Build
 
 on:
   workflow_call:
-    secrets:
-      GH_APP_ID:
-        required: false
     inputs:
       webPath:
         description: "Path to the Blazor WebAssembly project"
@@ -82,75 +79,59 @@ jobs:
         
       - name: Checkout Repository
         uses: actions/checkout@v2
-        
-      - name: Debug Secret in Repo B
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ inputs.dotnetVersion }}
+
+      - name: Restore Dependencies
+        run: dotnet restore ${{ inputs.solution }}
+
+      - name: Build Code
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test Code
+        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
+        run: dotnet test --no-restore
+
+      - name: Setup Local .NET Tools
+        if: inputs.functionPath != '' && inputs.functionName != ''
         run: |
-          if [[ -n "${{ secrets.GH_APP_ID }}" ]]; then
-            echo "GH_APP_ID is received ✅"
-          else
-            echo "GH_APP_ID is EMPTY ❌"
-          fi
-          
-#      - name: Decode GitHub App Secret
-#        run: |
-#          echo "GH_APP_ID=$(echo -n '${{ secrets.GH_APP_ID }}' | base64 --decode)" >> $GITHUB_ENV
-#
-#      - name: Debug Secret (Masked)
-#        run: | 
-#          echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
-#      - name: Setup .NET
-#        uses: actions/setup-dotnet@v3
-#        with:
-#          dotnet-version: ${{ inputs.dotnetVersion }}
-#
-#      - name: Restore Dependencies
-#        run: dotnet restore ${{ inputs.solution }}
-#
-#      - name: Build Code
-#        run: dotnet build --configuration Release --no-restore
-#
-#      - name: Test Code
-#        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
-#        run: dotnet test --no-restore
-#
-#      - name: Setup Local .NET Tools
-#        if: inputs.functionPath != '' && inputs.functionName != ''
-#        run: |
-#          dotnet new tool-manifest --force
-#          dotnet tool install Amazon.Lambda.Tools
-#       
-#      - name: Build and Publish Blazor WebAssembly
-#        if: inputs.webPath != ''
-#        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
-#
-#      - name: Build and Package Lambda Function Code
-#        if: inputs.functionPath != '' && inputs.functionName != ''
-#        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
-#
-#      - name: Setup Node.js
-#        if: inputs.runCdk == true
-#        uses: actions/setup-node@v4
-#        with:
-#          node-version: ${{ inputs.nodeVersion }}
-#
-#      - name: Install AWS CDK Locally
-#        if: inputs.runCdk == true
-#        run: npm install aws-cdk
-#
-#      - name: Configure AWS Credentials via OIDC
-#        if: inputs.runCdk == true
-#        uses: aws-actions/configure-aws-credentials@v4
-#        with:
-#          audience: sts.amazonaws.com
-#          aws-region: us-east-1
-#          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
-#            
-#      - name: Run AWS CDK Synth (Dry Run)
-#        if: inputs.runCdk == true
-#        # ✅ Pass the GitHub App secrets to the CDK workflow
-#        env:
-#          GH_APP_ID: ${{ secrets.TMD_APP_ID }}
-#          GH_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
-#          GH_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
-#          GH_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
-#        run: npx aws-cdk synth
+          dotnet new tool-manifest --force
+          dotnet tool install Amazon.Lambda.Tools
+
+      - name: Build and Publish Blazor WebAssembly
+        if: inputs.webPath != ''
+        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
+
+      - name: Build and Package Lambda Function Code
+        if: inputs.functionPath != '' && inputs.functionName != ''
+        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
+
+      - name: Setup Node.js
+        if: inputs.runCdk == true
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.nodeVersion }}
+
+      - name: Install AWS CDK Locally
+        if: inputs.runCdk == true
+        run: npm install aws-cdk
+
+      - name: Configure AWS Credentials via OIDC
+        if: inputs.runCdk == true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
+
+      - name: Run AWS CDK Synth (Dry Run)
+        if: inputs.runCdk == true
+        # ✅ Pass the GitHub App secrets to the CDK workflow
+        env:
+          TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
+          TMD_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
+          TMD_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
+          TMD_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
+        run: npx aws-cdk synth
