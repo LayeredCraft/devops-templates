@@ -156,18 +156,18 @@ jobs:
         if: inputs.runCdk == true
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            printf "GH_APP_ID=%s\n" "${{ secrets.TMP_APP_ID }}" >> $GITHUB_ENV
-            printf "GH_APP_INSTALLATION_ID=%s\n" "${{ secrets.TMP_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
-            printf "GH_APP_PRIVATE_KEY=%s\n" "${{ secrets.TMP_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
-            printf "GH_WEBHOOK_SECRET=%s\n" "${{ secrets.TMP_WEBHOOK_SECRET }}" >> $GITHUB_ENV
+            echo "GH_APP_ID=$GH_APP_ID" >> $GITHUB_ENV
+            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID" >> $GITHUB_ENV
+            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY" >> $GITHUB_ENV
+            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET" >> $GITHUB_ENV
           else
-            printf "GH_APP_ID=%s\n" "${{ secrets.TMD_APP_ID }}" >> $GITHUB_ENV
-            printf "GH_APP_INSTALLATION_ID=%s\n" "${{ secrets.TMD_APP_INSTALLATION_ID }}" >> $GITHUB_ENV
-            printf "GH_APP_PRIVATE_KEY=%s\n" "${{ secrets.TMD_APP_PRIVATE_KEY }}" >> $GITHUB_ENV
-            printf "GH_WEBHOOK_SECRET=%s\n" "${{ secrets.TMD_WEBHOOK_SECRET }}" >> $GITHUB_ENV
+            echo "GH_APP_ID=$GH_APP_ID_DEV" >> $GITHUB_ENV
+            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID_DEV" >> $GITHUB_ENV
+            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY_DEV" >> $GITHUB_ENV
+            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET_DEV" >> $GITHUB_ENV
           fi
+
       - name: Debug Environment Variables
         run: |
           echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
           echo "GH_APP_INSTALLATION_ID: ${GH_APP_INSTALLATION_ID:0:4}****"
-          echo "GH_WEBHOOK_SECRET: ${GH_WEBHOOK_SECRET:0:4}****"
