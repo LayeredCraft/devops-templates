@@ -152,22 +152,25 @@ jobs:
 #          GH_WEBHOOK_SECRET: ${{ env.GH_WEBHOOK_SECRET }}
 #        run: npx aws-cdk synth
 
-      - name: Set GitHub App Secrets Based on Deployment Type
-        if: inputs.runCdk == true
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "GH_APP_ID=$GH_APP_ID" >> $GITHUB_ENV
-            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID" >> $GITHUB_ENV
-            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY" >> $GITHUB_ENV
-            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET" >> $GITHUB_ENV
-          else
-            echo "GH_APP_ID=$GH_APP_ID_DEV" >> $GITHUB_ENV
-            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID_DEV" >> $GITHUB_ENV
-            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY_DEV" >> $GITHUB_ENV
-            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET_DEV" >> $GITHUB_ENV
-          fi
+#      - name: Set GitHub App Secrets Based on Deployment Type
+#        if: inputs.runCdk == true
+#        run: |
+#          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+#            echo "GH_APP_ID=$GH_APP_ID" >> $GITHUB_ENV
+#            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID" >> $GITHUB_ENV
+#            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY" >> $GITHUB_ENV
+#            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET" >> $GITHUB_ENV
+#          else
+#            echo "GH_APP_ID=$GH_APP_ID_DEV" >> $GITHUB_ENV
+#            echo "GH_APP_INSTALLATION_ID=$GH_APP_INSTALLATION_ID_DEV" >> $GITHUB_ENV
+#            echo "GH_APP_PRIVATE_KEY=$GH_APP_PRIVATE_KEY_DEV" >> $GITHUB_ENV
+#            echo "GH_WEBHOOK_SECRET=$GH_WEBHOOK_SECRET_DEV" >> $GITHUB_ENV
+#          fi
 
       - name: Debug Environment Variables
+        env:
+          GH_APP_ID: ${{ secrets.TMD_APP_ID }}
+          GH_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
         run: |
           echo "GH_APP_ID: ${GH_APP_ID:0:4}****"
           echo "GH_APP_INSTALLATION_ID: ${GH_APP_INSTALLATION_ID:0:4}****"
