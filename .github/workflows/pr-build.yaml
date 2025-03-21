@@ -71,6 +71,7 @@ jobs:
     steps:
       - name: Debug Secret Values (Masked)
         run: |
+          echo "GH_APP_ID Set: [${{ secrets.GH_APP_ID != '' }}]"
           echo "TMP_APP_ID Set: [${{ secrets.TMP_APP_ID != '' }}]"
           echo "TMD_APP_ID Set: [${{ secrets.TMD_APP_ID != '' }}]"
           echo "TMP_APP_PRIVATE_KEY Set: [${{ secrets.TMP_APP_PRIVATE_KEY != '' }}]"
