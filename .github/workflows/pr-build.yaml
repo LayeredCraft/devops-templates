@@ -144,16 +144,14 @@ jobs:
       
       - name: Run AWS CDK Synth (Dry Run)
         if: inputs.runCdk == true
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            export GH_APP_ID="${{ secrets.TMP_APP_ID }}"
-            export GH_APP_INSTALLATION_ID="${{ secrets.TMP_APP_INSTALLATION_ID }}"
-            export GH_APP_PRIVATE_KEY="${{ secrets.TMP_APP_PRIVATE_KEY }}"
-            export GH_WEBHOOK_SECRET="${{ secrets.TMP_WEBHOOK_SECRET }}"
-          else
-            export GH_APP_ID="${{ secrets.TMD_APP_ID }}"
-            export GH_APP_INSTALLATION_ID="${{ secrets.TMD_APP_INSTALLATION_ID }}"
-            export GH_APP_PRIVATE_KEY="${{ secrets.TMD_APP_PRIVATE_KEY }}"
-            export GH_WEBHOOK_SECRET="${{ secrets.TMD_WEBHOOK_SECRET }}"
-          fi
-          npx aws-cdk synth
+        # ✅ Pass the GitHub App secrets to the CDK workflow
+        env:
+          TMP_APP_ID: ${{ secrets.TMP_APP_ID }}
+          TMP_APP_INSTALLATION_ID: ${{ secrets.TMP_APP_INSTALLATION_ID }}
+          TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
+          TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
+          TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
+          TMD_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
+          TMD_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
+          TMD_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
+        run: npx aws-cdk synth
