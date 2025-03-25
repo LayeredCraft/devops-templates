@@ -63,11 +63,6 @@ on:
         description: "Name of the AWS CDK stack"
         required: false
         type: string
-      serverlessDeploy:
-        description: "Determins if serverless deploy should be run"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   id-token: write
@@ -120,16 +115,8 @@ jobs:
         if: inputs.functionPath != '' && inputs.functionName != ''
         run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
 
-      - name: Set Artifact
-        if: inputs.functionPath != '' && inputs.functionName != '' && inputs.serverlessDeploy == true
-        run: |
-          ARTIFACT="${{ env.outputPath }}/${{ inputs.functionName }}.zip"  # ✅ Assign the variable first
-          echo "ARTIFACT=$ARTIFACT" >> $GITHUB_ENV  # ✅ Append it correctly to GitHub Environment
-          echo "Generated Artifact: $ARTIFACT"  # ✅ Debug output
-          
-
       - name: Setup Node.js
-        if: inputs.runCdk == true || inputs.serverlessDeploy == true
+        if: inputs.runCdk == true
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.nodeVersion }}
@@ -138,10 +125,6 @@ jobs:
         if: inputs.runCdk == true
         run: npm install aws-cdk
         
-      - name: Install Serverless Locally
-        if: inputs.serverlessDeploy == true
-        run: npm install serverless        
-
       - name: Determine CDK Stack
         if: inputs.runCdk == true
         id: set-cdk-stack
@@ -155,17 +138,6 @@ jobs:
 
           echo "Deployment Environment: $DEPLOY_ENV"
 
-      - name: Determine Serverless Stage
-        if: inputs.serverlessDeploy == true
-        id: set-serverless-stage
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "DEPLOY_ENV=prod" >> $GITHUB_ENV
-          else
-            echo "DEPLOY_ENV=dev" >> $GITHUB_ENV
-          fi
-
-          echo "Deployment Environment: $DEPLOY_ENV"
           
       - name: Set Release Version
         id: set-release-version
@@ -182,7 +154,7 @@ jobs:
           
 
       - name: Configure AWS Credentials via OIDC
-        if: inputs.runCdk == true || inputs.serverlessDeploy == true
+        if: inputs.runCdk == true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           audience: sts.amazonaws.com
@@ -202,13 +174,6 @@ jobs:
           TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
           TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
         run: npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} ${{ env.DEPLOY_ENV }}
-
-      - name: Run Serverless Deploy
-        if: inputs.serverlessDeploy == true
-        working-directory: ${{ inputs.functionPath }}
-        env:
-          SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}  # ✅ Set Serverless Key
-        run: npx serverless deploy --stage ${{ env.DEPLOY_ENV }}
 
       - name: Tag Branch with Release Version
         if: startsWith(github.ref, 'refs/tags/') == false  # ✅ Run only if NOT a tag build
