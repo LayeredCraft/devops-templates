@@ -118,20 +118,21 @@ jobs:
       - name: Build and Package All Lambda Functions
         if: inputs.functions != '[]'
         run: |
-          echo "Parsing functions input..."
-          echo '${{ inputs.functions }}' | jq -c '.[]' | while read func; do
-            NAME=$(echo "$func" | jq -r '.name')
-            PATH=$(echo "$func" | jq -r '.path')
+          FUNCTIONS='${{ inputs.functions }}'
+          COUNT=$(echo "$FUNCTIONS" | jq length)
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+            PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
           
-            echo "Building $NAME from $PATH..."
+            echo "Packaging $NAME from $PATH..."
             dotnet tool run dotnet-lambda package -pl "$PATH" \
               --configuration ${{ inputs.buildConfiguration }} \
               --no-restore \
               --framework ${{ inputs.lambdaRuntimeVersion }} \
               --output-package "$ZIP_PATH"
           
-            echo "Built and packaged: $ZIP_PATH"
+            echo "Packaged: $ZIP_PATH"
           done
 
       - name: Setup Node.js
