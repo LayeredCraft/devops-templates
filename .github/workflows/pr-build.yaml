@@ -121,6 +121,7 @@ jobs:
           which dotnet
           dotnet --version
           dotnet tool list
+          pwd
           
           FUNCTIONS='${{ inputs.functions }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
