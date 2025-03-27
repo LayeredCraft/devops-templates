@@ -117,6 +117,7 @@ jobs:
 
       - name: Build and Package All Lambda Functions
         run: |
+          export PATH="/home/runner/.dotnet/tools:/usr/share/dotnet:$PATH"
           which dotnet
           dotnet --version
           dotnet tool list
@@ -134,11 +135,7 @@ jobs:
             echo "  Path = $PATH"
             echo "  Zip Path = $ZIP_PATH"
             echo "Packaging $NAME from $PATH..."
-            dotnet tool run dotnet-lambda package -pl "$PATH" \
-              --configuration ${{ inputs.buildConfiguration }} \
-              --no-restore \
-              --framework ${{ inputs.lambdaRuntimeVersion }} \
-              --output-package "$ZIP_PATH"
+            dotnet tool run dotnet-lambda package -pl "$PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           
             echo "Packaged: $ZIP_PATH"
           done
