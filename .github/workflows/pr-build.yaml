@@ -136,6 +136,8 @@ jobs:
 #          done
       - name: Debug Lambda Function Input Parsing
         run: |
+          which dotnet
+          dotnet --version
           FUNCTIONS='${{ inputs.functions }}'
           echo "FUNCTIONS = $FUNCTIONS"
           
