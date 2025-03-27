@@ -11,14 +11,14 @@ on:
         description: "Solution file name"
         required: false
         type: string
-      functionPath:
-        description: "Path to the function project"
-        required: false
-        type: string
-      functionName:
-        description: "Name of the function"
-        required: false
-        type: string
+#      functionPath:
+#        description: "Path to the function project"
+#        required: false
+#        type: string
+#      functionName:
+#        description: "Name of the function"
+#        required: false
+#        type: string
       buildPlatform:
         description: "Build platform"
         required: false
@@ -59,7 +59,11 @@ on:
         required: false
         default: true
         type: boolean
-        
+      functions:
+        description: "JSON array of Lambda functions to build"
+        required: false
+        type: string
+        default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]        
 permissions:
   id-token: write
   contents: write
@@ -104,9 +108,31 @@ jobs:
         if: inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
 
-      - name: Build and Package Lambda Function Code
-        if: inputs.functionPath != '' && inputs.functionName != ''
-        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
+#      - name: Build and Package Lambda Function Code
+#        if: inputs.functionPath != '' && inputs.functionName != ''
+#        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
+      - name: Install jq
+        if: inputs.functions != '[]'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Build and Package All Lambda Functions
+        if: inputs.functions != '[]'
+        run: |
+          echo "Parsing functions input..."
+          echo '${{ inputs.functions }}' | jq -c '.[]' | while read func; do
+            NAME=$(echo "$func" | jq -r '.name')
+            PATH=$(echo "$func" | jq -r '.path')
+            ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
+          
+            echo "Building $NAME from $PATH..."
+            dotnet tool run dotnet-lambda package -pl "$PATH" \
+              --configuration ${{ inputs.buildConfiguration }} \
+              --no-restore \
+              --framework ${{ inputs.lambdaRuntimeVersion }} \
+              --output-package "$ZIP_PATH"
+          
+            echo "Built and packaged: $ZIP_PATH"
+          done
 
       - name: Setup Node.js
         if: inputs.runCdk == true
