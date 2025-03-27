@@ -11,14 +11,6 @@ on:
         description: "Solution file name"
         required: false
         type: string
-      functionPath:
-        description: "Path to the API project"
-        required: false
-        type: string
-      functionName:
-        description: "Name of the API"
-        required: false
-        type: string
       buildPlatform:
         description: "Build platform"
         required: false
@@ -63,6 +55,11 @@ on:
         description: "Name of the AWS CDK stack"
         required: false
         type: string
+      functions:
+        description: "JSON array of Lambda functions to build"
+        required: false
+        type: string
+        default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]        
 
 permissions:
   id-token: write
@@ -102,7 +99,7 @@ jobs:
         run: dotnet test --no-restore
 
       - name: Setup Local .NET Tools
-        if: inputs.functionPath != '' && inputs.functionName != ''
+        if: inputs.functions != '[]'
         run: |
           dotnet new tool-manifest --force
           dotnet tool install Amazon.Lambda.Tools
@@ -111,9 +108,25 @@ jobs:
         if: inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
 
-      - name: Build and Package Lambda Function Code
-        if: inputs.functionPath != '' && inputs.functionName != ''
-        run: dotnet tool run dotnet-lambda package -pl ${{ inputs.functionPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package ${{ env.outputPath }}/${{ inputs.functionName }}.zip
+      - name: Install jq
+        if: inputs.functions != '[]'
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Build and Package All Lambda Functions
+        run: |
+          FUNCTIONS='${{ inputs.functions }}'
+          COUNT=$(echo "$FUNCTIONS" | jq length)
+          
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+            FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
+          
+            echo "Packaging $NAME from FUNC_PATH..."
+            dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
+          
+            echo "Packaged: $ZIP_PATH"
+          done
 
       - name: Setup Node.js
         if: inputs.runCdk == true

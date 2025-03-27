@@ -25,7 +25,6 @@ jobs:
       outputPath: 'publish'
       hasTests: true
       runCdk: true
-      serverlessDeploy: false
 ```
 
 ## Permissions
