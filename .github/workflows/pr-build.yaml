@@ -125,8 +125,8 @@ jobs:
             FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
           
-            echo "Packaging $NAME from $PATH..."
-            dotnet tool run dotnet-lambda package -pl "FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
+            echo "Packaging $NAME from FUNC_PATH..."
+            dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           
             echo "Packaged: $ZIP_PATH"
           done
