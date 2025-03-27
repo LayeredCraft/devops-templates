@@ -186,6 +186,8 @@ jobs:
           TMP_APP_INSTALLATION_ID: ${{ secrets.TMP_APP_INSTALLATION_ID }}
           TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
           TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
+          OPENAI_APIKEY: ${{ secrets.OPENAI_APIKEY }}
+          OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
         run: npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} ${{ env.DEPLOY_ENV }}
 
       - name: Tag Branch with Release Version
