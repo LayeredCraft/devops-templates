@@ -117,26 +117,16 @@ jobs:
 
       - name: Build and Package All Lambda Functions
         run: |
-          export PATH="/home/runner/.dotnet/tools:/usr/share/dotnet:$PATH"
-          which dotnet
-          dotnet --version
-          dotnet tool list
-          pwd
-          
           FUNCTIONS='${{ inputs.functions }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
           
           for i in $(seq 0 $((COUNT - 1))); do
             NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
-            PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
           
-            echo "Function [$i]:"
-            echo "  Name = $NAME"
-            echo "  Path = $PATH"
-            echo "  Zip Path = $ZIP_PATH"
             echo "Packaging $NAME from $PATH..."
-            dotnet tool run dotnet-lambda package -pl "$PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
+            dotnet tool run dotnet-lambda package -pl "FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           
             echo "Packaged: $ZIP_PATH"
           done
