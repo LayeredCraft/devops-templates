@@ -1,0 +1,56 @@
+﻿name: Build
+on:
+  workflow_call: 
+    inputs:
+      dotnet-version:
+        type: string
+        default: "8.0.x"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version}}
+      
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-restore
+
+      - name: Pack
+        run: dotnet pack --configuration Release -o artifacts --no-build --version-suffix ${{ github.run_number }}
+
+      - name: Publish to Nuget
+        run: dotnet nuget push **/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
+      
+      - name: Extract Version from Directory.Build.props
+        id: version
+        run: |
+          VERSION_PREFIX=$(grep -m1 '<VersionPrefix>' Directory.Build.props | sed -E 's/.*<VersionPrefix>(.*)<\/VersionPrefix>.*/\1/')
+          VERSION="$VERSION_PREFIX.${{ github.run_number }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Tag Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag v${{ env.VERSION }}
+          git push origin v${{ env.VERSION }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
