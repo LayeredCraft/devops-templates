@@ -17,6 +17,25 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version}}
       
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION_PREFIX=$(grep -m1 '<VersionPrefix>' Directory.Build.props | sed -E 's/.*<VersionPrefix>(.*)<\/VersionPrefix>.*/\1/')
+            
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF##refs/tags/v}
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            VERSION="$VERSION_PREFIX-beta.${GITHUB_RUN_NUMBER}"
+          elif [[ "${GITHUB_REF}" =~ refs/heads/release/.* ]]; then
+            VERSION="$VERSION_PREFIX-rc.${GITHUB_RUN_NUMBER}"
+          else
+            VERSION="$VERSION_PREFIX-dev.${GITHUB_RUN_NUMBER}"
+          fi
+            
+          echo "VERSION=$VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      
       - name: Restore
         run: dotnet restore
 
@@ -27,19 +46,11 @@ jobs:
         run: dotnet test --no-restore
 
       - name: Pack
-        run: dotnet pack --configuration Release -o artifacts --no-build --version-suffix ${{ github.run_number }}
+        run: dotnet pack --configuration Release -o artifacts --no-build /p:Version=${{ env.VERSION }}
 
       - name: Publish to Nuget
         run: dotnet nuget push **/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
       
-      - name: Extract Version from Directory.Build.props
-        id: version
-        run: |
-          VERSION_PREFIX=$(grep -m1 '<VersionPrefix>' Directory.Build.props | sed -E 's/.*<VersionPrefix>(.*)<\/VersionPrefix>.*/\1/')
-          VERSION="$VERSION_PREFIX.${{ github.run_number }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Tag Commit
         run: |
           git config user.name "github-actions"
