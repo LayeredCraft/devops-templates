@@ -24,7 +24,7 @@ on:
       dotnetVersion:
         description: ".NET SDK version"
         required: false
-        default: "9.0.x"
+        default: '["9.0.x"]'
         type: string
       lambdaRuntimeVersion:
         description: "AWS Lambda runtime version"
@@ -63,6 +63,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix: 
+        dotnet-version: ${{ fromJson(inputs.dotnetVersion) }}
     
     steps:
       - name: Set Default Output Path If Not Provided
@@ -75,10 +78,10 @@ jobs:
         
       - name: Checkout Repository
         uses: actions/checkout@v2
-      - name: Setup .NET
+      - name: Setup .NET SDK ${{ matrix.dotnet-version }}
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: ${{ inputs.dotnetVersion }}
+          dotnet-version: ${{ matrix.dotnet-version }}
 
       - name: Restore Dependencies
         run: dotnet restore ${{ inputs.solution }}
