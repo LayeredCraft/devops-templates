@@ -2,8 +2,17 @@ name: PR Build
 
 on:
   workflow_call:
-    secrets: 
-      inherit: true
+    secrets:
+      TMD_APP_ID: {}
+      TMD_APP_INSTALLATION_ID: {}
+      TMD_APP_PRIVATE_KEY: {}
+      TMD_WEBHOOK_SECRET: {}
+      TMP_APP_ID: {}
+      TMP_APP_INSTALLATION_ID: {}
+      TMP_APP_PRIVATE_KEY: {}
+      TMP_WEBHOOK_SECRET: {}
+      OPENAI_APIKEY: {}
+      OPENAI_ORGANIZATION: {}
     inputs:
       webPath:
         description: "Path to the Blazor WebAssembly project"
