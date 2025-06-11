@@ -131,12 +131,24 @@ jobs:
           output: both
           thresholds: '${{ inputs.coverageThreshold }} 80'
 
-      - name: Add Coverage PR Comment
-        if: inputs.hasTests == true && github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
+      - name: Publish Test Results
+        if: inputs.hasTests == true && always()
+        uses: dorny/test-reporter@v1
         with:
-          recreate: true
-          path: code-coverage-results.md
+          name: Test Results
+          path: './coverage/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: false
+
+      - name: Upload Coverage Report as Artifact
+        if: inputs.hasTests == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            ./coverage/**/*
+            code-coverage-results.md
+          retention-days: 30
 
       - name: Setup Local .NET Tools
         if: inputs.functions != '[]'
