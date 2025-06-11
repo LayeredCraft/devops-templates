@@ -57,6 +57,16 @@ on:
         required: false
         default: false
         type: boolean
+      coverageThreshold:
+        description: "Minimum code coverage percentage required"
+        required: false
+        default: 0
+        type: number
+      coverageReportFormats:
+        description: "Coverage report formats (cobertura, opencover, lcov)"
+        required: false
+        default: "cobertura"
+        type: string
       runCdk:  # ✅ New input to control CDK execution
         description: "Determines if AWS CDK steps should be run"
         required: false
@@ -97,9 +107,44 @@ jobs:
       - name: Build Code
         run: dotnet build --configuration Release --no-restore
 
-      - name: Test Code
+      - name: Test Code with Coverage
         if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
-        run: dotnet test --no-restore
+        run: |
+          dotnet test --no-restore \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage \
+            --logger trx \
+            --configuration Release \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
+
+      - name: Upload Coverage Reports to Codecov
+        if: inputs.hasTests == true
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Code Coverage Summary
+        if: inputs.hasTests == true
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage/**/coverage.cobertura.xml
+          badge: true
+          fail_below_min: ${{ inputs.coverageThreshold > 0 }}
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: true
+          indicators: true
+          output: both
+          thresholds: '${{ inputs.coverageThreshold }} 80'
+
+      - name: Add Coverage PR Comment
+        if: inputs.hasTests == true && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: code-coverage-results.md
 
       - name: Setup Local .NET Tools
         if: inputs.functions != '[]'
