@@ -131,15 +131,6 @@ jobs:
           output: both
           thresholds: '${{ inputs.coverageThreshold }} 80'
 
-      - name: Publish Test Results
-        if: inputs.hasTests == true && always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Test Results
-          path: './coverage/*.trx'
-          reporter: dotnet-trx
-          fail-on-error: false
-
       - name: Upload Coverage Report as Artifact
         if: inputs.hasTests == true
         uses: actions/upload-artifact@v4
