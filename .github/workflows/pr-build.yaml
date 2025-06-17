@@ -107,8 +107,12 @@ jobs:
       - name: Build Code
         run: dotnet build --configuration Release --no-restore
 
+      - name: Test Code
+        if: inputs.hasTests == true && inputs.coverageThreshold == 0
+        run: dotnet test --no-restore --configuration Release
+
       - name: Test Code with Coverage
-        if: inputs.hasTests == true  # ✅ Run only if hasTests is set to true
+        if: inputs.hasTests == true && inputs.coverageThreshold > 0
         run: |
           dotnet test --no-restore \
             --collect:"XPlat Code Coverage" \
@@ -118,7 +122,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
       - name: Code Coverage Summary
-        if: inputs.hasTests == true
+        if: inputs.hasTests == true && inputs.coverageThreshold > 0
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
           filename: coverage/**/coverage.cobertura.xml
@@ -132,7 +136,7 @@ jobs:
           thresholds: '${{ inputs.coverageThreshold }} 80'
 
       - name: Upload Coverage Report as Artifact
-        if: inputs.hasTests == true
+        if: inputs.hasTests == true && inputs.coverageThreshold > 0
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
