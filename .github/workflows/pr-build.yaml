@@ -115,11 +115,10 @@ jobs:
         if: inputs.hasTests == true && inputs.coverageThreshold > 0
         run: |
           dotnet test --no-restore \
-            --collect:"XPlat Code Coverage" \
-            --results-directory ./coverage \
-            --logger trx \
             --configuration Release \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
+            /p:CollectCoverage=true \
+            /p:CoverletOutput=./coverage/ \
+            /p:CoverletOutputFormat=${{ inputs.coverageReportFormats }}
 
       - name: Code Coverage Summary
         if: inputs.hasTests == true && inputs.coverageThreshold > 0
