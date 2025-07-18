@@ -193,8 +193,8 @@ jobs:
             echo "🏃 Running tests for: $PROJECT_NAME"
             
             if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-              # Run with coverage
-              dotnet run --project "$project" -- --coverage --coverage-output-format cobertura --coverage-output "coverage-$PROJECT_NAME.cobertura.xml"
+              # Run with coverage - specify absolute path to ensure coverage file is in current directory
+              dotnet run --project "$project" -- --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage-$PROJECT_NAME.cobertura.xml"
             else
               # Run without coverage
               dotnet run --project "$project"
