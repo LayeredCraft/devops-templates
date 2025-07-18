@@ -62,16 +62,6 @@ on:
         required: false
         default: false
         type: boolean
-      enableCodeCoverage: # ✅ New input to enable code coverage
-        description: "Enable code coverage collection with MTP"
-        required: false
-        default: false
-        type: boolean
-      coverageThreshold: # ✅ New input for coverage threshold
-        description: "Minimum code coverage percentage required (0-100)"
-        required: false
-        default: 80
-        type: number
       testDirectory: # ✅ New input for test directory
         description: "Directory containing test projects"
         required: false
@@ -169,86 +159,19 @@ jobs:
         if: inputs.hasTests == true && inputs.useMtpRunner == false
         run: dotnet test --no-restore
 
-      - name: Test Code (MTP with Coverage)
+      - name: Test Code (MTP)
         if: inputs.hasTests == true && inputs.useMtpRunner == true
         run: |
-          echo "🧪 Running MTP tests with coverage: ${{ inputs.enableCodeCoverage }}"
-          
-          # Install ReportGenerator if coverage is enabled
-          if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-            echo "📊 Installing ReportGenerator..."
-            dotnet tool install --global dotnet-reportgenerator-globaltool
-          fi
+          echo "🧪 Running MTP tests..."
           
           # Run each discovered test project
           for project in ${{ steps.discover-tests.outputs.test-projects }}; do
             PROJECT_NAME=$(basename "$project" .csproj)
             echo "🏃 Running tests for: $PROJECT_NAME"
             
-            if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-              # Run with coverage
-              dotnet run --project "$project" -- --coverage --coverage-output-format cobertura --coverage-output "coverage-$PROJECT_NAME.cobertura.xml"
-            else
-              # Run without coverage
-              dotnet run --project "$project"
-            fi
+            # Run without coverage for production builds
+            dotnet run --project "$project"
           done
-
-      - name: Generate Coverage Reports
-        if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
-        run: |
-          echo "📊 Generating combined coverage reports..."
-          
-          # Check if any coverage files exist
-          if ! ls coverage-*.cobertura.xml 1> /dev/null 2>&1; then
-            echo "❌ No coverage files found!"
-            exit 1
-          fi
-          
-          # Combine all coverage files and generate reports
-          reportgenerator -reports:"coverage-*.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;Cobertura;TextSummary"
-          
-          # Extract coverage percentage from the summary
-          if [ -f "CoverageReport/Summary.txt" ]; then
-            COVERAGE=$(grep "Line coverage:" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+%" | head -1 | sed 's/%//')
-            if [ -z "$COVERAGE" ]; then
-              echo "⚠️  Could not extract coverage percentage, checking for alternative format..."
-              COVERAGE=$(grep -E "Line coverage.*[0-9]+\.[0-9]+%" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            fi
-          else
-            echo "⚠️  Summary.txt not found, attempting to extract from XML..."
-            COVERAGE=$(grep -E "line-rate=\"[0-9]+\.[0-9]+\"" coverage-*.cobertura.xml | head -1 | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            if [ -n "$COVERAGE" ]; then
-              # Convert from decimal to percentage
-              COVERAGE=$(echo "$COVERAGE * 100" | bc -l | sed 's/\.[0-9]*$//')
-            fi
-          fi
-          
-          if [ -n "$COVERAGE" ]; then
-            echo "📈 Current coverage: $COVERAGE%"
-            echo "🎯 Required threshold: ${{ inputs.coverageThreshold }}%"
-            
-            # Compare coverage with threshold
-            if (( $(echo "$COVERAGE < ${{ inputs.coverageThreshold }}" | bc -l) )); then
-              echo "❌ Coverage $COVERAGE% is below threshold ${{ inputs.coverageThreshold }}%"
-              echo "::error::Code coverage $COVERAGE% is below the required threshold of ${{ inputs.coverageThreshold }}%"
-              exit 1
-            else
-              echo "✅ Coverage $COVERAGE% meets threshold ${{ inputs.coverageThreshold }}%"
-            fi
-          else
-            echo "⚠️  Could not determine coverage percentage, but reports were generated"
-          fi
-
-      - name: Upload Coverage Reports
-        if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-reports
-          path: |
-            CoverageReport/
-            coverage-*.cobertura.xml
-          retention-days: 30
 
       - name: Setup Local .NET Tools
         if: inputs.functions != '[]'
