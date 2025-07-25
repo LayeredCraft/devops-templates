@@ -176,6 +176,31 @@ jobs:
             --configuration Release \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
+      - name: Extract Target Frameworks
+        if: inputs.hasTests == true && inputs.useMtpRunner == true
+        id: extract-frameworks
+        run: |
+          echo "🎯 Extracting target frameworks from dotnetVersion..."
+          
+          # Convert dotnetVersion input to target framework monikers
+          FRAMEWORKS=""
+          DOTNET_VERSIONS="${{ inputs.dotnetVersion }}"
+          
+          # Handle both single string and multi-line input
+          for version in $DOTNET_VERSIONS; do
+            # Extract major.minor version and convert to target framework
+            if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
+              MAJOR="${BASH_REMATCH[1]}"
+              MINOR="${BASH_REMATCH[2]}"
+              TFM="net${MAJOR}.${MINOR}"
+              FRAMEWORKS="$FRAMEWORKS $TFM"
+              echo "✅ Mapped $version → $TFM"
+            fi
+          done
+          
+          echo "📋 Target frameworks: $FRAMEWORKS"
+          echo "frameworks=$FRAMEWORKS" >> $GITHUB_OUTPUT
+
       - name: Test Code (MTP)
         if: inputs.hasTests == true && inputs.useMtpRunner == true
         run: |
@@ -187,32 +212,46 @@ jobs:
             dotnet tool install --global dotnet-reportgenerator-globaltool
           fi
           
-          # Run each discovered test project
+          # Run each discovered test project for each target framework
           for project in ${{ steps.discover-tests.outputs.test-projects }}; do
             PROJECT_NAME=$(basename "$project" .csproj)
             echo "🏃 Running tests for: $PROJECT_NAME"
             
-            if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-              # Run with coverage - specify absolute path to ensure coverage file is in current directory
-              dotnet run --project "$project" -- --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage-$PROJECT_NAME.cobertura.xml"
-            else
-              # Run without coverage
-              dotnet run --project "$project"
-            fi
+            for framework in ${{ steps.extract-frameworks.outputs.frameworks }}; do
+              echo "🎯 Testing $PROJECT_NAME with framework: $framework"
+              
+              if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
+                # Run with coverage - specify absolute path to ensure coverage file is in current directory
+                dotnet run --project "$project" --framework "$framework" -- --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage-$PROJECT_NAME-$framework.cobertura.xml"
+              else
+                # Run without coverage
+                dotnet run --project "$project" --framework "$framework"
+              fi
+            done
           done
 
       - name: Generate Coverage Reports (MTP)
         if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
-          echo "📊 Generating combined coverage reports..."
+          echo "📊 Generating combined coverage reports from multiple frameworks..."
           
-          # Check if any coverage files exist
-          if ! ls coverage-*.cobertura.xml 1> /dev/null 2>&1; then
-            echo "❌ No coverage files found!"
-            exit 1
+          # Check if any coverage files exist (now includes framework suffix)
+          if ! ls coverage-*-*.cobertura.xml 1> /dev/null 2>&1; then
+            echo "❌ No multi-framework coverage files found!"
+            # Fallback: check for old single-framework format
+            if ! ls coverage-*.cobertura.xml 1> /dev/null 2>&1; then
+              echo "❌ No coverage files found at all!"
+              exit 1
+            else
+              echo "📋 Found single-framework coverage files, using those..."
+            fi
           fi
           
-          # Combine all coverage files and generate reports
+          # List all coverage files for debugging
+          echo "📋 Coverage files found:"
+          ls -la coverage-*.cobertura.xml || true
+          
+          # Combine all coverage files and generate reports (supports both formats)
           reportgenerator -reports:"coverage-*.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;Cobertura;TextSummary"
           
           # Extract coverage percentage from the summary
@@ -232,7 +271,7 @@ jobs:
           fi
           
           if [ -n "$COVERAGE" ]; then
-            echo "📈 Current coverage: $COVERAGE%"
+            echo "📈 Combined coverage across all frameworks: $COVERAGE%"
             echo "🎯 Required threshold: ${{ inputs.coverageThreshold }}%"
             
             # Compare coverage with threshold
@@ -241,7 +280,7 @@ jobs:
               echo "::error::Code coverage $COVERAGE% is below the required threshold of ${{ inputs.coverageThreshold }}%"
               exit 1
             else
-              echo "✅ Coverage $COVERAGE% meets threshold ${{ inputs.coverageThreshold }}%"
+              echo "✅ Combined coverage $COVERAGE% meets threshold ${{ inputs.coverageThreshold }}%"
             fi
           else
             echo "⚠️  Could not determine coverage percentage, but reports were generated"
