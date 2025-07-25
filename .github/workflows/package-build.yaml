@@ -86,31 +86,6 @@ jobs:
             exit 1
           fi
 
-      - name: Extract Target Frameworks
-        if: inputs.hasTests == true && inputs.useMtpRunner == true
-        id: extract-frameworks
-        run: |
-          echo "🎯 Using provided dotnet-version as target frameworks..."
-          
-          # Convert dotnet-version input to target framework monikers
-          FRAMEWORKS=""
-          DOTNET_VERSIONS="${{ inputs.dotnet-version }}"
-          
-          # Handle both single string and multi-line input
-          for version in $DOTNET_VERSIONS; do
-            # Extract major.minor version and convert to target framework
-            if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
-              MAJOR="${BASH_REMATCH[1]}"
-              MINOR="${BASH_REMATCH[2]}"
-              TFM="net${MAJOR}.${MINOR}"
-              FRAMEWORKS="$FRAMEWORKS $TFM"
-              echo "✅ Using framework: $TFM (from $version)"
-            fi
-          done
-          
-          echo "📋 Target frameworks: $FRAMEWORKS"
-          echo "frameworks=$FRAMEWORKS" >> $GITHUB_OUTPUT
-
       - name: Test Code (Legacy)
         if: inputs.hasTests == true && inputs.useMtpRunner == false
         run: dotnet test --no-restore
@@ -120,16 +95,27 @@ jobs:
         run: |
           echo "🧪 Running MTP tests..."
           
+          # Convert dotnet-version input to target framework monikers and run tests
+          DOTNET_VERSIONS="${{ inputs.dotnet-version }}"
+          
           # Run each discovered test project for each target framework
           for project in ${{ steps.discover-tests.outputs.test-projects }}; do
             PROJECT_NAME=$(basename "$project" .csproj)
             echo "🏃 Running tests for: $PROJECT_NAME"
             
-            for framework in ${{ steps.extract-frameworks.outputs.frameworks }}; do
-              echo "🎯 Testing $PROJECT_NAME with framework: $framework"
-              
-              # Run without coverage
-              dotnet run --project "$project" --framework "$framework"
+            # Handle both single string and multi-line input
+            for version in $DOTNET_VERSIONS; do
+              # Extract major.minor version and convert to target framework
+              if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
+                MAJOR="${BASH_REMATCH[1]}"
+                MINOR="${BASH_REMATCH[2]}"
+                TFM="net${MAJOR}.${MINOR}"
+                
+                echo "🎯 Testing $PROJECT_NAME with framework: $TFM"
+                
+                # Run without coverage
+                dotnet run --project "$project" --framework "$TFM"
+              fi
             done
           done
 
