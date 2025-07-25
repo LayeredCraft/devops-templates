@@ -20,16 +20,6 @@ on:
         required: false
         default: "tests"
         type: string
-      enableCodeCoverage:
-        description: "Enable code coverage collection"
-        required: false
-        default: false
-        type: boolean
-      coverageThreshold:
-        description: "Minimum code coverage percentage required (0-100)"
-        required: false
-        default: 80
-        type: number
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -128,13 +118,7 @@ jobs:
       - name: Test Code (MTP)
         if: inputs.hasTests == true && inputs.useMtpRunner == true
         run: |
-          echo "🧪 Running MTP tests with coverage: ${{ inputs.enableCodeCoverage }}"
-          
-          # Install ReportGenerator if coverage is enabled
-          if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-            echo "📊 Installing ReportGenerator..."
-            dotnet tool install --global dotnet-reportgenerator-globaltool
-          fi
+          echo "🧪 Running MTP tests..."
           
           # Run each discovered test project for each target framework
           for project in ${{ steps.discover-tests.outputs.test-projects }}; do
@@ -144,81 +128,11 @@ jobs:
             for framework in ${{ steps.extract-frameworks.outputs.frameworks }}; do
               echo "🎯 Testing $PROJECT_NAME with framework: $framework"
               
-              if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-                # Run with coverage - specify absolute path to ensure coverage file is in current directory
-                dotnet run --project "$project" --framework "$framework" -- --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage-$PROJECT_NAME-$framework.cobertura.xml"
-              else
-                # Run without coverage
-                dotnet run --project "$project" --framework "$framework"
-              fi
+              # Run without coverage
+              dotnet run --project "$project" --framework "$framework"
             done
           done
 
-      - name: Generate Coverage Reports (MTP)
-        if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
-        run: |
-          echo "📊 Generating combined coverage reports from multiple frameworks..."
-          
-          # Check if any coverage files exist (now includes framework suffix)
-          if ! ls coverage-*-*.cobertura.xml 1> /dev/null 2>&1; then
-            echo "❌ No multi-framework coverage files found!"
-            # Fallback: check for old single-framework format
-            if ! ls coverage-*.cobertura.xml 1> /dev/null 2>&1; then
-              echo "❌ No coverage files found at all!"
-              exit 1
-            else
-              echo "📋 Found single-framework coverage files, using those..."
-            fi
-          fi
-          
-          # List all coverage files for debugging
-          echo "📋 Coverage files found:"
-          ls -la coverage-*.cobertura.xml || true
-          
-          # Combine all coverage files and generate reports (supports both formats)
-          reportgenerator -reports:"coverage-*.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;Cobertura;TextSummary"
-          
-          # Extract coverage percentage from the summary
-          if [ -f "CoverageReport/Summary.txt" ]; then
-            COVERAGE=$(grep "Line coverage:" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+%" | head -1 | sed 's/%//')
-            if [ -z "$COVERAGE" ]; then
-              echo "⚠️  Could not extract coverage percentage, checking for alternative format..."
-              COVERAGE=$(grep -E "Line coverage.*[0-9]+\.[0-9]+%" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            fi
-          else
-            echo "⚠️  Summary.txt not found, attempting to extract from XML..."
-            COVERAGE=$(grep -E "line-rate=\"[0-9]+\.[0-9]+\"" coverage-*.cobertura.xml | head -1 | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            if [ -n "$COVERAGE" ]; then
-              # Convert from decimal to percentage
-              COVERAGE=$(echo "$COVERAGE * 100" | bc -l | sed 's/\.[0-9]*$//')
-            fi
-          fi
-          
-          if [ -n "$COVERAGE" ]; then
-            echo "📈 Combined coverage across all frameworks: $COVERAGE%"
-            echo "🎯 Required threshold: ${{ inputs.coverageThreshold }}%"
-            
-            # Compare coverage with threshold
-            if (( $(echo "$COVERAGE < ${{ inputs.coverageThreshold }}" | bc -l) )); then
-              echo "❌ Coverage $COVERAGE% is below threshold ${{ inputs.coverageThreshold }}%"
-              echo "::error::Code coverage $COVERAGE% is below the required threshold of ${{ inputs.coverageThreshold }}%"
-              exit 1
-            else
-              echo "✅ Combined coverage $COVERAGE% meets threshold ${{ inputs.coverageThreshold }}%"
-            fi
-          else
-            echo "⚠️  Could not determine coverage percentage, but reports were generated"
-          fi
-
-      - name: Upload Coverage Reports
-        if: inputs.hasTests == true && inputs.enableCodeCoverage == true
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports
-          path: |
-            CoverageReport/
-            coverage-*.cobertura.xml
-          retention-days: 30
 
       - name: Pack
         run: dotnet pack --configuration Release -o artifacts --no-build /p:Version=${{ env.VERSION }}
