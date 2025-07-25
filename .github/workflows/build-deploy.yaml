@@ -162,15 +162,30 @@ jobs:
       - name: Test Code (MTP)
         if: inputs.hasTests == true && inputs.useMtpRunner == true
         run: |
-          echo "🧪 Running MTP tests..."
+          echo "🧪 Running MTP tests for deployment..."
           
-          # Run each discovered test project
+          # Convert dotnetVersion input to target framework monikers and run tests
+          DOTNET_VERSIONS="${{ inputs.dotnetVersion }}"
+          
+          # Run each discovered test project for each target framework
           for project in ${{ steps.discover-tests.outputs.test-projects }}; do
             PROJECT_NAME=$(basename "$project" .csproj)
             echo "🏃 Running tests for: $PROJECT_NAME"
             
-            # Run without coverage for production builds
-            dotnet run --project "$project"
+            # Handle both single string and multi-line input
+            for version in $DOTNET_VERSIONS; do
+              # Extract major.minor version and convert to target framework
+              if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
+                MAJOR="${BASH_REMATCH[1]}"
+                MINOR="${BASH_REMATCH[2]}"
+                TFM="net${MAJOR}.${MINOR}"
+                
+                echo "🎯 Testing $PROJECT_NAME with framework: $TFM"
+                
+                # Run without coverage for production builds
+                dotnet run --project "$project" --framework "$TFM"
+              fi
+            done
           done
 
       - name: Setup Local .NET Tools
