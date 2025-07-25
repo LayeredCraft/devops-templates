@@ -90,7 +90,7 @@ jobs:
         if: inputs.hasTests == true && inputs.useMtpRunner == true
         id: extract-frameworks
         run: |
-          echo "🎯 Extracting target frameworks from dotnet-version..."
+          echo "🎯 Using provided dotnet-version as target frameworks..."
           
           # Convert dotnet-version input to target framework monikers
           FRAMEWORKS=""
@@ -104,7 +104,7 @@ jobs:
               MINOR="${BASH_REMATCH[2]}"
               TFM="net${MAJOR}.${MINOR}"
               FRAMEWORKS="$FRAMEWORKS $TFM"
-              echo "✅ Mapped $version → $TFM"
+              echo "✅ Using framework: $TFM (from $version)"
             fi
           done
           
