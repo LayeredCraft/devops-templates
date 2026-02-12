@@ -18,6 +18,11 @@ on:
         description: "Path to the Blazor WebAssembly project"
         required: false
         type: string
+      spaSites:
+        description: "JSON array of JavaScript SPAs to build (npm ci + npm run build). e.g. [{\"name\":\"admin\",\"path\":\"src/admin\",\"buildDir\":\"dist\"}]"
+        required: false
+        type: string
+        default: '[]'
       solution:
         description: "Solution file name"
         required: false
@@ -108,22 +113,48 @@ jobs:
           else
             echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
+
+      - name: Compute Build Flags
+        run: |
+          needs_dotnet=false
+          if [ -n "${{ inputs.solution }}" ] || [ -n "${{ inputs.webPath }}" ] || [ "${{ inputs.hasTests }}" = "true" ] || [ '${{ inputs.functions }}' != '[]' ]; then
+            needs_dotnet=true
+          fi
+
+          needs_node=false
+          if [ "${{ inputs.runCdk }}" = "true" ] || [ '${{ inputs.spaSites }}' != '[]' ]; then
+            needs_node=true
+          fi
+
+          echo "NEEDS_DOTNET=$needs_dotnet" >> $GITHUB_ENV
+          echo "NEEDS_NODE=$needs_node" >> $GITHUB_ENV
+
+      - name: Validate .NET Inputs
+        if: env.NEEDS_DOTNET == 'true' && inputs.solution == ''
+        run: |
+          echo "❌ .NET steps are required but inputs.solution was not provided."
+          echo "   Provide inputs.solution (e.g. MyApp.sln) when using webPath/hasTests/functions." 
+          exit 1
         
       - name: Checkout Repository
         uses: actions/checkout@v5
+
       - name: Setup .NET
+        if: env.NEEDS_DOTNET == 'true'
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
 
       - name: Restore Dependencies
+        if: env.NEEDS_DOTNET == 'true'
         run: dotnet restore ${{ inputs.solution }}
 
       - name: Build Code
-        run: dotnet build --configuration Release --no-restore
+        if: env.NEEDS_DOTNET == 'true'
+        run: dotnet build ${{ inputs.solution }} --configuration ${{ inputs.buildConfiguration }} --no-restore
 
       - name: Discover Test Projects (MTP)
-        if: inputs.hasTests == true && inputs.useMtpRunner == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
         id: discover-tests
         run: |
           echo "🔍 Discovering test projects in ${{ inputs.testDirectory }} directory..."
@@ -163,11 +194,11 @@ jobs:
           fi
 
       - name: Test Code (Legacy)
-        if: inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == false
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == false
         run: dotnet test --no-restore --configuration Release
 
       - name: Test Code with Legacy Coverage
-        if: inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
         run: |
           dotnet test --no-restore \
             --collect:"XPlat Code Coverage" \
@@ -177,7 +208,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
       - name: Test Code (MTP)
-        if: inputs.hasTests == true && inputs.useMtpRunner == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
         run: |
           echo "🧪 Running MTP tests with coverage: ${{ inputs.enableCodeCoverage }}"
           
@@ -217,7 +248,7 @@ jobs:
           done
 
       - name: Generate Coverage Reports (MTP)
-        if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
           echo "📊 Generating combined coverage reports from multiple frameworks..."
           
@@ -273,7 +304,7 @@ jobs:
           fi
 
       - name: Legacy Code Coverage Summary
-        if: inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
           filename: coverage/**/coverage.cobertura.xml
@@ -287,7 +318,7 @@ jobs:
           thresholds: '${{ inputs.coverageThreshold }} 80'
 
       - name: Upload Coverage Reports
-        if: inputs.hasTests == true && inputs.enableCodeCoverage == true
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == true
         uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
@@ -299,20 +330,21 @@ jobs:
           retention-days: 30
 
       - name: Setup Local .NET Tools
-        if: inputs.functions != '[]'
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
           dotnet new tool-manifest --force
           dotnet tool install Amazon.Lambda.Tools
 
       - name: Build and Publish Blazor WebAssembly
-        if: inputs.webPath != ''
+        if: env.NEEDS_DOTNET == 'true' && inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
 
       - name: Install jq
-        if: inputs.functions != '[]'
+        if: inputs.functions != '[]' || inputs.spaSites != '[]'
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Build and Package All Lambda Functions
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
           FUNCTIONS='${{ inputs.functions }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
@@ -329,10 +361,79 @@ jobs:
           done
 
       - name: Setup Node.js
-        if: inputs.runCdk == true
+        if: env.NEEDS_NODE == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.nodeVersion }}
+          cache: npm
+          cache-dependency-path: |
+            **/package-lock.json
+
+      - name: Build JavaScript SPAs
+        if: inputs.spaSites != '[]'
+        run: |
+          set -euo pipefail
+
+          SITES='${{ inputs.spaSites }}'
+          COUNT=$(echo "$SITES" | jq length)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No SPAs configured."
+            exit 0
+          fi
+
+          echo "Building $COUNT JavaScript SPA(s)..."
+
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$SITES" | jq -r ".[$i].name // empty")
+            SPA_PATH=$(echo "$SITES" | jq -r ".[$i].path // empty")
+            BUILD_DIR=$(echo "$SITES" | jq -r ".[$i].buildDir // \"dist\"")
+            INSTALL_CMD=$(echo "$SITES" | jq -r ".[$i].installCommand // \"npm ci\"")
+            BUILD_CMD=$(echo "$SITES" | jq -r ".[$i].buildCommand // \"npm run build\"")
+            OUTPUT_SUBDIR=$(echo "$SITES" | jq -r ".[$i].outputSubdir // empty")
+
+            if [ -z "$NAME" ]; then
+              echo "❌ spaSites[$i].name is required"
+              exit 1
+            fi
+            if [ -z "$SPA_PATH" ]; then
+              echo "❌ spaSites[$i].path is required (site: $NAME)"
+              exit 1
+            fi
+            if [ ! -f "$SPA_PATH/package.json" ]; then
+              echo "❌ package.json not found at $SPA_PATH (site: $NAME)"
+              exit 1
+            fi
+
+            if [ -z "$OUTPUT_SUBDIR" ]; then
+              OUTPUT_SUBDIR="websites/$NAME"
+            fi
+
+            echo "---"
+            echo "Site: $NAME"
+            echo "Path: $SPA_PATH"
+            echo "Build dir: $BUILD_DIR"
+            echo "Output subdir: $OUTPUT_SUBDIR"
+
+            echo "Installing deps: $INSTALL_CMD"
+            (cd "$SPA_PATH" && bash -lc "$INSTALL_CMD")
+
+            echo "Building: $BUILD_CMD"
+            (cd "$SPA_PATH" && bash -lc "$BUILD_CMD")
+
+            BUILD_OUT="$SPA_PATH/$BUILD_DIR"
+            if [ ! -d "$BUILD_OUT" ]; then
+              echo "❌ Build output directory not found: $BUILD_OUT (site: $NAME)"
+              exit 1
+            fi
+
+            SITE_OUT="${{ env.outputPath }}/$OUTPUT_SUBDIR"
+            rm -rf "$SITE_OUT"
+            mkdir -p "$SITE_OUT"
+            cp -a "$BUILD_OUT/." "$SITE_OUT/"
+
+            echo "✅ Built $NAME -> $SITE_OUT"
+          done
 
       - name: Install AWS CDK Locally
         if: inputs.runCdk == true
