@@ -52,6 +52,11 @@ on:
         required: false
         default: "18.x"
         type: string
+      packageManager:
+        description: "Package manager to use for Node.js projects (npm or pnpm)"
+        required: false
+        default: "npm"
+        type: string
       outputPath:
         description: "Output directory for builds"
         required: false
@@ -360,14 +365,18 @@ jobs:
             echo "Packaged: $ZIP_PATH"
           done
 
+      - name: Setup pnpm
+        if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         if: env.NEEDS_NODE == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.nodeVersion }}
-          cache: npm
+          cache: ${{ inputs.packageManager }}
           cache-dependency-path: |
-            **/package-lock.json
+            ${{ inputs.packageManager == 'pnpm' && '**/pnpm-lock.yaml' || '**/package-lock.json' }}
 
       - name: Build JavaScript SPAs
         if: inputs.spaSites != '[]'
