@@ -57,6 +57,11 @@ on:
         required: false
         default: "npm"
         type: string
+      pnpmVersion:
+        description: "pnpm version to install (only used when packageManager is pnpm)"
+        required: false
+        default: "10"
+        type: string
       outputPath:
         description: "Output directory for builds"
         required: false
@@ -257,6 +262,8 @@ jobs:
       - name: Setup pnpm
         if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
         uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpmVersion }}
 
       - name: Setup Node.js
         if: env.NEEDS_NODE == 'true'
