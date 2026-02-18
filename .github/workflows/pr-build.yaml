@@ -93,7 +93,7 @@ on:
         default: "test"
         type: string
       coverageReportFormats:
-        description: "Coverage report formats (cobertura, opencover, lcov)"
+        description: "Coverage report format for legacy runner (cobertura, opencover, lcov). Must be cobertura for the coverage summary step to work. MTP runner always uses cobertura."
         required: false
         default: "cobertura"
         type: string
@@ -163,48 +163,8 @@ jobs:
         if: env.NEEDS_DOTNET == 'true'
         run: dotnet build ${{ inputs.solution }} --configuration ${{ inputs.buildConfiguration }} --no-restore
 
-      - name: Discover Test Projects (MTP)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
-        id: discover-tests
-        run: |
-          echo "🔍 Discovering test projects in ${{ inputs.testDirectory }} directory..."
-          
-          TEST_PROJECTS=""
-          TOTAL_FOUND=0
-          TOTAL_SKIPPED=0
-          
-          for csproj in $(find ${{ inputs.testDirectory }} -name "*.csproj" -type f 2>/dev/null || true); do
-            TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            PROJECT_NAME=$(basename "$csproj" .csproj)
-            
-            # Check if project has IsTestProject=false
-            if grep -q "<IsTestProject>false</IsTestProject>" "$csproj"; then
-              echo "⏭️  Skipping utility project: $PROJECT_NAME"
-              TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
-              continue
-            fi
-            
-            # Check if project has MTP runner enabled
-            if grep -q "UseMicrosoftTestingPlatformRunner.*true" "$csproj"; then
-              echo "✅ Found MTP test project: $PROJECT_NAME"
-              TEST_PROJECTS="$TEST_PROJECTS $csproj"
-            else
-              echo "⚠️  Project $PROJECT_NAME doesn't have MTP runner enabled"
-              TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
-            fi
-          done
-          
-          echo "📊 Summary: Found $TOTAL_FOUND projects, using $((TOTAL_FOUND - TOTAL_SKIPPED)), skipped $TOTAL_SKIPPED"
-          echo "test-projects=$TEST_PROJECTS" >> $GITHUB_OUTPUT
-          
-          # Validate we found at least one test project
-          if [ -z "$TEST_PROJECTS" ]; then
-            echo "❌ No MTP test projects found!"
-            exit 1
-          fi
-
-      - name: Test Code (Legacy)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == false
+      - name: Test Code
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == false
         run: dotnet test --no-restore --configuration Release
 
       - name: Test Code with Legacy Coverage
@@ -217,104 +177,19 @@ jobs:
             --configuration Release \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
-      - name: Test Code (MTP)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
-        run: |
-          echo "🧪 Running MTP tests with coverage: ${{ inputs.enableCodeCoverage }}"
-          
-          # Install ReportGenerator if coverage is enabled
-          if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-            echo "📊 Installing ReportGenerator..."
-            dotnet tool install --global dotnet-reportgenerator-globaltool
-          fi
-          
-          # Convert dotnetVersion input to target framework monikers and run tests
-          DOTNET_VERSIONS="${{ inputs.dotnetVersion }}"
-          
-          # Run each discovered test project for each target framework
-          for project in ${{ steps.discover-tests.outputs.test-projects }}; do
-            PROJECT_NAME=$(basename "$project" .csproj)
-            echo "🏃 Running tests for: $PROJECT_NAME"
-            
-            # Handle both single string and multi-line input
-            for version in $DOTNET_VERSIONS; do
-              # Extract major.minor version and convert to target framework
-              if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
-                MAJOR="${BASH_REMATCH[1]}"
-                MINOR="${BASH_REMATCH[2]}"
-                TFM="net${MAJOR}.${MINOR}"
-                
-                echo "🎯 Testing $PROJECT_NAME with framework: $TFM"
-                
-                if [ "${{ inputs.enableCodeCoverage }}" == "true" ]; then
-                  # Run with coverage - specify absolute path to ensure coverage file is in current directory
-                  dotnet run --project "$project" --framework "$TFM" -- --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage-$PROJECT_NAME-$TFM.cobertura.xml"
-                else
-                  # Run without coverage
-                  dotnet run --project "$project" --framework "$TFM"
-                fi
-              fi
-            done
-          done
-
-      - name: Generate Coverage Reports (MTP)
+      - name: Test Code with MTP Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
-          echo "📊 Generating combined coverage reports from multiple frameworks..."
-          
-          # Check if any coverage files exist (now includes framework suffix)
-          if ! ls coverage-*-*.cobertura.xml 1> /dev/null 2>&1; then
-            echo "❌ No multi-framework coverage files found!"
-            # Fallback: check for old single-framework format
-            if ! ls coverage-*.cobertura.xml 1> /dev/null 2>&1; then
-              echo "❌ No coverage files found at all!"
-              exit 1
-            else
-              echo "📋 Found single-framework coverage files, using those..."
-            fi
-          fi
-          
-          # List all coverage files for debugging
-          echo "📋 Coverage files found:"
-          ls -la coverage-*.cobertura.xml || true
-          
-          # Combine all coverage files and generate reports (supports both formats)
-          reportgenerator -reports:"coverage-*.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;Cobertura;TextSummary"
-          
-          # Extract coverage percentage from the summary
-          if [ -f "CoverageReport/Summary.txt" ]; then
-            COVERAGE=$(grep "Line coverage:" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+%" | head -1 | sed 's/%//')
-            if [ -z "$COVERAGE" ]; then
-              echo "⚠️  Could not extract coverage percentage, checking for alternative format..."
-              COVERAGE=$(grep -E "Line coverage.*[0-9]+\.[0-9]+%" "CoverageReport/Summary.txt" | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            fi
-          else
-            echo "⚠️  Summary.txt not found, attempting to extract from XML..."
-            COVERAGE=$(grep -E "line-rate=\"[0-9]+\.[0-9]+\"" coverage-*.cobertura.xml | head -1 | grep -oE "[0-9]+\.[0-9]+" | head -1)
-            if [ -n "$COVERAGE" ]; then
-              # Convert from decimal to percentage
-              COVERAGE=$(echo "$COVERAGE * 100" | bc -l | sed 's/\.[0-9]*$//')
-            fi
-          fi
-          
-          if [ -n "$COVERAGE" ]; then
-            echo "📈 Combined coverage across all frameworks: $COVERAGE%"
-            echo "🎯 Required threshold: ${{ inputs.coverageThreshold }}%"
-            
-            # Compare coverage with threshold
-            if (( $(echo "$COVERAGE < ${{ inputs.coverageThreshold }}" | bc -l) )); then
-              echo "❌ Coverage $COVERAGE% is below threshold ${{ inputs.coverageThreshold }}%"
-              echo "::error::Code coverage $COVERAGE% is below the required threshold of ${{ inputs.coverageThreshold }}%"
-              exit 1
-            else
-              echo "✅ Combined coverage $COVERAGE% meets threshold ${{ inputs.coverageThreshold }}%"
-            fi
-          else
-            echo "⚠️  Could not determine coverage percentage, but reports were generated"
-          fi
+          dotnet test --no-restore \
+            --results-directory ./coverage \
+            --configuration Release \
+            --report-xunit-trx \
+            --coverage \
+            --coverage-output ./coverage/coverage.cobertura.xml \
+            --coverage-output-format cobertura
 
-      - name: Legacy Code Coverage Summary
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
+      - name: Code Coverage Summary
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == true
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
           filename: coverage/**/coverage.cobertura.xml
@@ -333,8 +208,6 @@ jobs:
         with:
           name: coverage-reports
           path: |
-            CoverageReport/
-            coverage-*.cobertura.xml
             ./coverage/**/*
             code-coverage-results.md
           retention-days: 30
