@@ -72,11 +72,6 @@ on:
         required: false
         default: false
         type: boolean
-      useMtpRunner: # ✅ New input to control MTP runner usage
-        description: "Use Microsoft Testing Platform runner via global.json instead of legacy dotnet test"
-        required: false
-        default: false
-        type: boolean
       runCdk:  # ✅ New input to control CDK execution
         description: "Determines if AWS CDK steps should be run"
         required: false

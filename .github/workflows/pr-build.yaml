@@ -87,11 +87,6 @@ on:
         required: false
         default: 80
         type: number
-      testDirectory: # ✅ New input for test directory
-        description: "Directory containing test projects"
-        required: false
-        default: "test"
-        type: string
       coverageReportFormats:
         description: "Coverage report format for legacy runner (cobertura, opencover, lcov). Must be cobertura for the coverage summary step to work. MTP runner always uses cobertura."
         required: false
