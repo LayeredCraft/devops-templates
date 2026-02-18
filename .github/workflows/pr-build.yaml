@@ -19,7 +19,7 @@ on:
         required: false
         type: string
       spaSites:
-        description: "JSON array of JavaScript SPAs to build (npm ci + npm run build). e.g. [{\"name\":\"admin\",\"path\":\"src/admin\",\"buildDir\":\"dist\"}]"
+        description: "JSON array of JavaScript SPAs to build (npm ci + npm run build). Supports optional per-SPA env vars with dev/prod values. e.g. [{\"name\":\"docs\",\"path\":\"apps/docs\",\"env\":{\"NEXT_PUBLIC_SITE_URL\":{\"dev\":\"https://dev.example.com\",\"prod\":\"https://www.example.com\"}}}]"
         required: false
         type: string
         default: '[]'
@@ -299,6 +299,29 @@ jobs:
             echo "Build dir: $BUILD_DIR"
             echo "Output subdir: $OUTPUT_SUBDIR"
 
+            ENV_SPEC=$(echo "$SITES" | jq -c ".[$i].env // {}")
+            ENV_KEYS=$(echo "$ENV_SPEC" | jq -r 'keys[]')
+            ENV_KEYS_SET=""
+            if [ -n "$ENV_KEYS" ]; then
+              echo "Env (dev):"
+              for KEY in $ENV_KEYS; do
+                if [[ ! "$KEY" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+                  echo "❌ Invalid env var name in spaSites[$i].env: $KEY (site: $NAME)"
+                  exit 1
+                fi
+
+                VAL=$(echo "$ENV_SPEC" | jq -r --arg k "$KEY" '.[ $k ] | if type=="object" then (.dev // "") elif .==null then "" else tostring end')
+                if [ -z "$VAL" ]; then
+                  echo "❌ Missing spaSites[$i].env.$KEY.dev value (site: $NAME)"
+                  exit 1
+                fi
+
+                export "$KEY=$VAL"
+                ENV_KEYS_SET="$ENV_KEYS_SET $KEY"
+                echo "- $KEY=$VAL"
+              done
+            fi
+
             echo "Installing deps: $INSTALL_CMD"
             (cd "$SPA_PATH" && bash -lc "$INSTALL_CMD")
 
@@ -317,6 +340,12 @@ jobs:
             cp -a "$BUILD_OUT/." "$SITE_OUT/"
 
             echo "✅ Built $NAME -> $SITE_OUT"
+
+            if [ -n "$ENV_KEYS_SET" ]; then
+              for KEY in $ENV_KEYS_SET; do
+                unset "$KEY"
+              done
+            fi
           done
 
       - name: Install AWS CDK Locally
