@@ -73,15 +73,10 @@ on:
         default: false
         type: boolean
       useMtpRunner: # ✅ New input to control MTP runner usage
-        description: "Use Microsoft Testing Platform runner (dotnet run) instead of legacy dotnet test"
+        description: "Use Microsoft Testing Platform runner via global.json instead of legacy dotnet test"
         required: false
         default: false
         type: boolean
-      testDirectory: # ✅ New input for test directory
-        description: "Directory containing test projects"
-        required: false
-        default: "test"
-        type: string
       runCdk:  # ✅ New input to control CDK execution
         description: "Determines if AWS CDK steps should be run"
         required: false
@@ -155,78 +150,9 @@ jobs:
         if: env.NEEDS_DOTNET == 'true'
         run: dotnet build ${{ inputs.solution }} --configuration ${{ inputs.buildConfiguration }} --no-restore
 
-      - name: Discover Test Projects (MTP)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
-        id: discover-tests
-        run: |
-          echo "🔍 Discovering test projects in ${{ inputs.testDirectory }} directory..."
-          
-          TEST_PROJECTS=""
-          TOTAL_FOUND=0
-          TOTAL_SKIPPED=0
-          
-          for csproj in $(find ${{ inputs.testDirectory }} -name "*.csproj" -type f 2>/dev/null || true); do
-            TOTAL_FOUND=$((TOTAL_FOUND + 1))
-            PROJECT_NAME=$(basename "$csproj" .csproj)
-            
-            # Check if project has IsTestProject=false
-            if grep -q "<IsTestProject>false</IsTestProject>" "$csproj"; then
-              echo "⏭️  Skipping utility project: $PROJECT_NAME"
-              TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
-              continue
-            fi
-            
-            # Check if project has MTP runner enabled
-            if grep -q "UseMicrosoftTestingPlatformRunner.*true" "$csproj"; then
-              echo "✅ Found MTP test project: $PROJECT_NAME"
-              TEST_PROJECTS="$TEST_PROJECTS $csproj"
-            else
-              echo "⚠️  Project $PROJECT_NAME doesn't have MTP runner enabled"
-              TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
-            fi
-          done
-          
-          echo "📊 Summary: Found $TOTAL_FOUND projects, using $((TOTAL_FOUND - TOTAL_SKIPPED)), skipped $TOTAL_SKIPPED"
-          echo "test-projects=$TEST_PROJECTS" >> $GITHUB_OUTPUT
-          
-          # Validate we found at least one test project
-          if [ -z "$TEST_PROJECTS" ]; then
-            echo "❌ No MTP test projects found!"
-            exit 1
-          fi
-
-      - name: Test Code (Legacy)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false
+      - name: Test Code
+        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true
         run: dotnet test --no-restore
-
-      - name: Test Code (MTP)
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true
-        run: |
-          echo "🧪 Running MTP tests for deployment..."
-          
-          # Convert dotnetVersion input to target framework monikers and run tests
-          DOTNET_VERSIONS="${{ inputs.dotnetVersion }}"
-          
-          # Run each discovered test project for each target framework
-          for project in ${{ steps.discover-tests.outputs.test-projects }}; do
-            PROJECT_NAME=$(basename "$project" .csproj)
-            echo "🏃 Running tests for: $PROJECT_NAME"
-            
-            # Handle both single string and multi-line input
-            for version in $DOTNET_VERSIONS; do
-              # Extract major.minor version and convert to target framework
-              if [[ "$version" =~ ^([0-9]+)\.([0-9]+) ]]; then
-                MAJOR="${BASH_REMATCH[1]}"
-                MINOR="${BASH_REMATCH[2]}"
-                TFM="net${MAJOR}.${MINOR}"
-                
-                echo "🎯 Testing $PROJECT_NAME with framework: $TFM"
-                
-                # Run without coverage for production builds
-                dotnet run --project "$project" --framework "$TFM"
-              fi
-            done
-          done
 
       - name: Setup Local .NET Tools
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
