@@ -312,7 +312,9 @@ jobs:
 
             ENV_SPEC=$(echo "$SITES" | jq -c ".[$i].env // {}")
             ENV_KEYS=$(echo "$ENV_SPEC" | jq -r 'keys[]')
-            ENV_KEYS_SET=""
+            ENV_KEYS_SET=()
+            ENV_PREV_SET=()
+            ENV_PREV_VAL=()
             if [ -n "$ENV_KEYS" ]; then
               echo "Env (dev):"
               for KEY in $ENV_KEYS; do
@@ -321,15 +323,27 @@ jobs:
                   exit 1
                 fi
 
-                VAL=$(echo "$ENV_SPEC" | jq -r --arg k "$KEY" '.[ $k ] | if type=="object" then (.dev // "") elif .==null then "" else tostring end')
+                RAW_VAL=$(echo "$ENV_SPEC" | jq -r --arg k "$KEY" '.[ $k ] | if type=="object" then (.dev) else . end')
+                if [ "$RAW_VAL" = "null" ]; then
+                  echo "❌ Missing spaSites[$i].env.$KEY.dev value (site: $NAME)"
+                  exit 1
+                fi
+                VAL=$(printf "%s" "$RAW_VAL")
                 if [ -z "$VAL" ]; then
                   echo "❌ Missing spaSites[$i].env.$KEY.dev value (site: $NAME)"
                   exit 1
                 fi
 
+                if [ "${!KEY+x}" ]; then
+                  ENV_PREV_SET+=("1")
+                  ENV_PREV_VAL+=("${!KEY}")
+                else
+                  ENV_PREV_SET+=("0")
+                  ENV_PREV_VAL+=("")
+                fi
+                ENV_KEYS_SET+=("$KEY")
                 export "$KEY=$VAL"
-                ENV_KEYS_SET="$ENV_KEYS_SET $KEY"
-                echo "- $KEY=$VAL"
+                echo "- $KEY=***"
               done
             fi
 
@@ -352,9 +366,14 @@ jobs:
 
             echo "✅ Built $NAME -> $SITE_OUT"
 
-            if [ -n "$ENV_KEYS_SET" ]; then
-              for KEY in $ENV_KEYS_SET; do
-                unset "$KEY"
+            if [ ${#ENV_KEYS_SET[@]} -gt 0 ]; then
+              for IDX in "${!ENV_KEYS_SET[@]}"; do
+                KEY="${ENV_KEYS_SET[$IDX]}"
+                if [ "${ENV_PREV_SET[$IDX]}" = "1" ]; then
+                  export "$KEY=${ENV_PREV_VAL[$IDX]}"
+                else
+                  unset "$KEY"
+                fi
               done
             fi
           done
