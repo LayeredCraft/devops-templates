@@ -323,7 +323,12 @@ jobs:
                   exit 1
                 fi
 
-                VAL=$(echo "$ENV_SPEC" | jq -r --arg k "$KEY" '.[ $k ] | if type=="object" then (.dev // "") elif .==null then "" else tostring end')
+                RAW_VAL=$(echo "$ENV_SPEC" | jq -r --arg k "$KEY" '.[ $k ] | if type=="object" then (.dev) else . end')
+                if [ "$RAW_VAL" = "null" ]; then
+                  echo "❌ Missing spaSites[$i].env.$KEY.dev value (site: $NAME)"
+                  exit 1
+                fi
+                VAL=$(printf "%s" "$RAW_VAL")
                 if [ -z "$VAL" ]; then
                   echo "❌ Missing spaSites[$i].env.$KEY.dev value (site: $NAME)"
                   exit 1
