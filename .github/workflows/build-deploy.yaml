@@ -19,7 +19,7 @@ on:
         required: false
         type: string
       spaSites:
-        description: "JSON array of JavaScript SPAs to build (npm ci + npm run build). e.g. [{\"name\":\"admin\",\"path\":\"src/admin\",\"buildDir\":\"dist\"}]"
+        description: "JSON array of JavaScript SPAs to build (npm ci + npm run build). Supports optional per-SPA env vars with dev/prod values. e.g. [{\"name\":\"docs\",\"path\":\"apps/docs\",\"env\":{\"NEXT_PUBLIC_SITE_URL\":{\"dev\":\"https://dev.example.com\",\"prod\":\"https://www.example.com\"}}}]"
         required: false
         type: string
         default: '[]'
