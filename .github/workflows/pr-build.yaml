@@ -92,6 +92,11 @@ on:
         required: false
         default: "cobertura"
         type: string
+      coverageSettingsPath:
+        description: "Optional code coverage settings file path (used with MTP runner via --coverage-settings)."
+        required: false
+        default: ""
+        type: string
       runCdk:  # ✅ New input to control CDK execution
         description: "Determines if AWS CDK steps should be run"
         required: false
@@ -175,11 +180,17 @@ jobs:
       - name: Test Code with MTP Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
+          COVERAGE_SETTINGS=""
+          if [ -n "${{ inputs.coverageSettingsPath }}" ]; then
+            COVERAGE_SETTINGS="--coverage-settings ${{ inputs.coverageSettingsPath }}"
+          fi
+
           dotnet test --no-restore \
             --results-directory ./coverage \
             --configuration Release \
             --report-xunit-trx \
             --coverage \
+            $COVERAGE_SETTINGS \
             --coverage-output ./coverage/coverage.cobertura.xml \
             --coverage-output-format cobertura
 
