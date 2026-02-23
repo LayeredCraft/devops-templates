@@ -180,20 +180,54 @@ jobs:
             echo "Packaged: $ZIP_PATH"
           done
 
+      - name: Detect JS lockfile for caching
+        if: env.NEEDS_NODE == 'true'
+        id: nodecache
+        shell: bash
+        run: |
+          set -e
+
+          # Prefer pnpm lockfile if present and packageManager is pnpm
+          if [ "${{ inputs.packageManager }}" = "pnpm" ] && ls **/pnpm-lock.yaml 1> /dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "dep=**/pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Otherwise look for npm lockfile
+          if [ "${{ inputs.packageManager }}" = "npm" ] && ls **/package-lock.json 1> /dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "dep=**/package-lock.json" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # No lockfile found => disable caching
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          echo "dep=" >> "$GITHUB_OUTPUT"
+          
       - name: Setup pnpm
         if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
         uses: pnpm/action-setup@v4
         with:
           version: ${{ inputs.pnpmVersion }}
+      
+      - name: Enable Corepack (pnpm)
+        if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
+        run: corepack enable
+      
+      - name: Setup Node.js (no cache)
+        if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.nodeVersion }}
 
-      - name: Setup Node.js
-        if: env.NEEDS_NODE == 'true'
+      - name: Setup Node.js (with cache)
+        if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.nodeVersion }}
           cache: ${{ inputs.packageManager }}
-          cache-dependency-path: |
-            ${{ inputs.packageManager == 'pnpm' && '**/pnpm-lock.yaml' || '**/package-lock.json' }}
+          cache-dependency-path: ${{ steps.nodecache.outputs.dep }}
 
       - name: Build JavaScript SPAs
         if: inputs.spaSites != '[]'
