@@ -153,7 +153,9 @@ jobs:
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true
         run: |
           SOLUTION="${{ inputs.solution }}"
-          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore --configuration ${{ inputs.buildConfiguration }}
+          SOLUTION_ARGS=()
+          [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration ${{ inputs.buildConfiguration }}
 
       - name: Setup Local .NET Tools
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
@@ -416,7 +418,7 @@ jobs:
 
       - name: Run Integration Tests
         if: inputs.integrationTestSolution != ''
-        run: dotnet test ${{ inputs.integrationTestSolution }} --no-restore --configuration ${{ inputs.buildConfiguration }}
+        run: dotnet test --solution ${{ inputs.integrationTestSolution }} --no-restore --configuration ${{ inputs.buildConfiguration }}
 
       - name: Tag Branch with Release Version
         if: startsWith(github.ref, 'refs/tags/') == false  # ✅ Run only if NOT a tag build

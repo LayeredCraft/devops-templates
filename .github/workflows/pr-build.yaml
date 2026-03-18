@@ -167,13 +167,17 @@ jobs:
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == false
         run: |
           SOLUTION="${{ inputs.solution }}"
-          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore --configuration Release
+          SOLUTION_ARGS=()
+          [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration Release
 
       - name: Test Code with Legacy Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
         run: |
           SOLUTION="${{ inputs.solution }}"
-          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore \
+          SOLUTION_ARGS=()
+          [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore \
             --collect:"XPlat Code Coverage" \
             --results-directory ./coverage \
             --logger trx \
@@ -184,12 +188,14 @@ jobs:
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
           SOLUTION="${{ inputs.solution }}"
+          SOLUTION_ARGS=()
+          [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
           COVERAGE_SETTINGS=""
           if [ -n "${{ inputs.coverageSettingsPath }}" ]; then
             COVERAGE_SETTINGS="--coverage-settings ${{ inputs.coverageSettingsPath }}"
           fi
 
-          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore \
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore \
             --results-directory ./coverage \
             --configuration Release \
             --report-xunit-trx \
