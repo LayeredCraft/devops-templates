@@ -165,12 +165,15 @@ jobs:
 
       - name: Test Code
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == false
-        run: dotnet test --no-restore --configuration Release
+        run: |
+          SOLUTION="${{ inputs.solution }}"
+          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore --configuration Release
 
       - name: Test Code with Legacy Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
         run: |
-          dotnet test --no-restore \
+          SOLUTION="${{ inputs.solution }}"
+          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore \
             --collect:"XPlat Code Coverage" \
             --results-directory ./coverage \
             --logger trx \
@@ -180,12 +183,13 @@ jobs:
       - name: Test Code with MTP Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
+          SOLUTION="${{ inputs.solution }}"
           COVERAGE_SETTINGS=""
           if [ -n "${{ inputs.coverageSettingsPath }}" ]; then
             COVERAGE_SETTINGS="--coverage-settings ${{ inputs.coverageSettingsPath }}"
           fi
 
-          dotnet test --no-restore \
+          dotnet test ${SOLUTION:+"$SOLUTION"} --no-restore \
             --results-directory ./coverage \
             --configuration Release \
             --report-xunit-trx \
