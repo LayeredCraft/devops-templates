@@ -85,7 +85,11 @@ on:
         description: "JSON array of Lambda functions to build"
         required: false
         type: string
-        default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]        
+        default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]
+      integrationTestSolution:
+        description: "Solution file for integration tests to run after CDK deploy. When multiple solution files exist at the root, provide the integration test solution here."
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -109,7 +113,7 @@ jobs:
       - name: Compute Build Flags
         run: |
           needs_dotnet=false
-          if [ -n "${{ inputs.solution }}" ] || [ -n "${{ inputs.webPath }}" ] || [ "${{ inputs.hasTests }}" = "true" ] || [ '${{ inputs.functions }}' != '[]' ]; then
+          if [ -n "${{ inputs.solution }}" ] || [ -n "${{ inputs.webPath }}" ] || [ "${{ inputs.hasTests }}" = "true" ] || [ '${{ inputs.functions }}' != '[]' ] || [ -n "${{ inputs.integrationTestSolution }}" ]; then
             needs_dotnet=true
           fi
 
@@ -147,7 +151,11 @@ jobs:
 
       - name: Test Code
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true
-        run: dotnet test --no-restore
+        run: |
+          SOLUTION="${{ inputs.solution }}"
+          SOLUTION_ARGS=()
+          [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration ${{ inputs.buildConfiguration }}
 
       - name: Setup Local .NET Tools
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
@@ -403,6 +411,14 @@ jobs:
           OPENAI_APIKEY: ${{ secrets.OPENAI_APIKEY }}
           OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
         run: npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} ${{ env.DEPLOY_ENV }}
+
+      - name: Restore Integration Test Dependencies
+        if: inputs.integrationTestSolution != ''
+        run: dotnet restore ${{ inputs.integrationTestSolution }}
+
+      - name: Run Integration Tests
+        if: inputs.integrationTestSolution != ''
+        run: dotnet test --solution ${{ inputs.integrationTestSolution }} --no-restore --configuration ${{ inputs.buildConfiguration }}
 
       - name: Tag Branch with Release Version
         if: startsWith(github.ref, 'refs/tags/') == false  # ✅ Run only if NOT a tag build
