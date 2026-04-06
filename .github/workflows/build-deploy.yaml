@@ -165,7 +165,12 @@ jobs:
 
       - name: Build and Publish Blazor WebAssembly
         if: env.NEEDS_DOTNET == 'true' && inputs.webPath != ''
-        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
+        run: |
+          WASM_ENV="Development"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            WASM_ENV="Production"
+          fi
+          dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }} -p:WasmApplicationEnvironmentName=$WASM_ENV
 
       - name: Install jq
         if: inputs.functions != '[]' || inputs.spaSites != '[]'
