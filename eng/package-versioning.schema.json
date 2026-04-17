@@ -28,6 +28,10 @@
                 "type": "string",
                 "description": "SemVer prefix, e.g. 1.4.0",
                 "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              },
+              "versionSuffix": {
+                "type": "string",
+                "description": "Optional pre-release label, e.g. alpha, beta, rc1. Preview builds become {prefix}-{suffix}.preview.{run}. Release builds become {prefix}-{suffix}."
               }
             }
           },
@@ -53,6 +57,10 @@
                       "type": "string",
                       "description": "SemVer prefix for this profile, e.g. 9.0.0",
                       "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                    },
+                    "versionSuffix": {
+                      "type": "string",
+                      "description": "Optional pre-release label, e.g. alpha, beta, rc1."
                     },
                     "dotnetSdk": {
                       "type": "string",

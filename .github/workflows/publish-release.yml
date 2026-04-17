@@ -70,7 +70,8 @@ jobs:
           strategy = pkg["strategy"]
 
           if strategy == "single":
-              expected = pkg["defaultVersionPrefix"]
+              prefix = pkg["defaultVersionPrefix"]
+              suffix = pkg.get("versionSuffix", "")
               sdk = ""
 
           elif strategy == "by-profile":
@@ -80,15 +81,18 @@ jobs:
               profile = pkg["profiles"].get(profile_key)
               if not profile:
                   raise SystemExit(f"❌ Profile '{profile_key}' not found for package '${{ inputs.packageId }}'")
-              expected = profile["versionPrefix"]
+              prefix = profile["versionPrefix"]
+              suffix = profile.get("versionSuffix", "")
               sdk = profile.get("dotnetSdk", "")
 
           else:
               raise SystemExit(f"❌ Unknown strategy: {strategy}")
 
+          expected = f"{prefix}-{suffix}" if suffix else prefix
+
           if version != expected:
               raise SystemExit(
-                  f"❌ Tag version '{version}' does not match expected prefix '{expected}' "
+                  f"❌ Tag version '{version}' does not match expected '{expected}' "
                   f"in eng/package-versioning.json for package '${{ inputs.packageId }}'"
               )
 

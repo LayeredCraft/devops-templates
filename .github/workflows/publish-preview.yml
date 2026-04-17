@@ -63,6 +63,7 @@ jobs:
 
           if strategy == "single":
               prefix = pkg["defaultVersionPrefix"]
+              suffix = pkg.get("versionSuffix", "")
               sdk = ""
 
           elif strategy == "by-profile":
@@ -73,12 +74,16 @@ jobs:
               if not profile:
                   raise SystemExit(f"❌ Profile '{profile_key}' not found for package '${{ inputs.packageId }}'")
               prefix = profile["versionPrefix"]
+              suffix = profile.get("versionSuffix", "")
               sdk = profile.get("dotnetSdk", "")
 
           else:
               raise SystemExit(f"❌ Unknown strategy: {strategy}")
 
-          version = f"{prefix}-preview.${{ github.run_number }}"
+          if suffix:
+              version = f"{prefix}-{suffix}.preview.${{ github.run_number }}"
+          else:
+              version = f"{prefix}-preview.${{ github.run_number }}"
           print(f"package_version={version}")
           print(f"dotnet_sdk={sdk}")
           PY
