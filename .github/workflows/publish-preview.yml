@@ -90,7 +90,11 @@ jobs:
           JSON_SDK="${{ steps.version.outputs.dotnet_sdk }}"
 
           if [ -n "$INPUT_SDK" ]; then
-            echo "dotnet_version=$INPUT_SDK" >> "$GITHUB_OUTPUT"
+            {
+              echo 'dotnet_version<<__EOF__'
+              echo "$INPUT_SDK"
+              echo '__EOF__'
+            } >> "$GITHUB_OUTPUT"
           elif [ -n "$JSON_SDK" ]; then
             echo "dotnet_version=$JSON_SDK" >> "$GITHUB_OUTPUT"
           else
