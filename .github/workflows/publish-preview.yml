@@ -11,6 +11,11 @@ on:
         description: ".NET SDK version(s)"
         required: true
         type: string
+      prereleaseIdentifier:
+        description: "Prerelease label used in the preview version (e.g. alpha, beta, preview)"
+        required: false
+        default: "preview"
+        type: string
       hasTests:
         description: "Run tests before publish"
         required: false
@@ -34,7 +39,7 @@ jobs:
         run: |
           LATEST_TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName 2>/dev/null || echo "v0.0.1")
           BASE="${LATEST_TAG#v}"
-          echo "package_version=${BASE}.preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${BASE}-${{ inputs.prereleaseIdentifier }}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
