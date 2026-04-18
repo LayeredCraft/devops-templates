@@ -25,6 +25,10 @@ on:
       NUGET_API_KEY:
         required: true
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -32,13 +36,33 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Validate release-drafter config exists
+        run: |
+          if [ ! -f ".github/release-drafter.yml" ]; then
+            echo "❌ .github/release-drafter.yml not found."
+            echo "   This file is required for preview version resolution."
+            exit 1
+          fi
+
+      - name: Resolve next version via Release Drafter
+        id: release-drafter
+        uses: release-drafter/release-drafter@v7.2.0
+        with:
+          config-name: release-drafter.yml
+          disable_autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Resolve preview version
         id: version
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          LATEST_TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName 2>/dev/null || echo "v0.0.1")
-          BASE="${LATEST_TAG#v}"
+          RESOLVED="${{ steps.release-drafter.outputs.resolved_version }}"
+          if [ -z "$RESOLVED" ]; then
+            echo "❌ Release Drafter returned an empty resolved_version."
+            echo "   Ensure .github/release-drafter.yml is configured correctly."
+            exit 1
+          fi
+          BASE="${RESOLVED%%-*}"
           echo "package_version=${BASE}-${{ inputs.prereleaseIdentifier }}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
