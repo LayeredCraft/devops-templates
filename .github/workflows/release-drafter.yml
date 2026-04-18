@@ -18,9 +18,18 @@ permissions:
   pull-requests: write
 
 jobs:
+  autolabel:
+    runs-on: ubuntu-latest
+    if: inputs.event_name == 'pull_request' && inputs.pr_draft == false
+
+    steps:
+      - uses: release-drafter/release-drafter/autolabeler@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   draft:
     runs-on: ubuntu-latest
-    if: inputs.event_name == 'push' || inputs.event_name == 'workflow_dispatch' || inputs.pr_draft == false
+    if: inputs.event_name == 'push' || inputs.event_name == 'workflow_dispatch'
 
     concurrency:
       group: release-drafter-${{ github.ref }}
@@ -30,5 +39,6 @@ jobs:
       - uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
+          disable_autolabeler: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
