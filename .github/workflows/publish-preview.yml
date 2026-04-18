@@ -46,7 +46,7 @@ jobs:
 
       - name: Resolve next version via Release Drafter
         id: release-drafter
-        uses: release-drafter/release-drafter@v7.2.0
+        uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
           disable_autolabeler: true
