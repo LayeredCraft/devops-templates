@@ -7,25 +7,15 @@ on:
         description: "Solution file name"
         required: true
         type: string
-      packageId:
-        description: "NuGet package ID (must match a key in eng/package-versioning.json)"
+      dotnetVersion:
+        description: ".NET SDK version(s)"
         required: true
-        type: string
-      versionProfile:
-        description: "Profile name for by-profile packages (e.g. net9)"
-        required: false
-        default: ""
         type: string
       hasTests:
         description: "Run tests before publish"
         required: false
         default: true
         type: boolean
-      dotnetVersion:
-        description: ".NET SDK version. Falls back to dotnetSdk from JSON profile if not provided."
-        required: false
-        default: ""
-        type: string
     secrets:
       NUGET_API_KEY:
         required: true
@@ -37,80 +27,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Validate manifest exists
-        run: |
-          if [ ! -f "eng/package-versioning.json" ]; then
-            echo "❌ eng/package-versioning.json not found."
-            echo "   Create this file in your repo. See the schema at:"
-            echo "   https://github.com/LayeredCraft/devops-templates/blob/main/eng/package-versioning.schema.json"
-            exit 1
-          fi
-
-      - name: Resolve version
+      - name: Resolve preview version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-
-          config = json.loads(Path("eng/package-versioning.json").read_text())
-
-          pkg = config["packages"].get("${{ inputs.packageId }}")
-          if not pkg:
-              raise SystemExit("❌ Package '${{ inputs.packageId }}' not found in eng/package-versioning.json")
-
-          strategy = pkg["strategy"]
-
-          if strategy == "single":
-              prefix = pkg["defaultVersionPrefix"]
-              suffix = pkg.get("versionSuffix", "")
-              sdk = ""
-
-          elif strategy == "by-profile":
-              profile_key = "${{ inputs.versionProfile }}"
-              if not profile_key:
-                  raise SystemExit("❌ versionProfile is required for by-profile packages")
-              profile = pkg["profiles"].get(profile_key)
-              if not profile:
-                  raise SystemExit(f"❌ Profile '{profile_key}' not found for package '${{ inputs.packageId }}'")
-              prefix = profile["versionPrefix"]
-              suffix = profile.get("versionSuffix", "")
-              sdk = profile.get("dotnetSdk", "")
-
-          else:
-              raise SystemExit(f"❌ Unknown strategy: {strategy}")
-
-          if suffix:
-              version = f"{prefix}-{suffix}.preview.${{ github.run_number }}"
-          else:
-              version = f"{prefix}-preview.${{ github.run_number }}"
-          print(f"package_version={version}")
-          print(f"dotnet_sdk={sdk}")
-          PY
-
-      - name: Resolve SDK version
-        id: sdk
-        run: |
-          INPUT_SDK="${{ inputs.dotnetVersion }}"
-          JSON_SDK="${{ steps.version.outputs.dotnet_sdk }}"
-
-          if [ -n "$INPUT_SDK" ]; then
-            {
-              echo 'dotnet_version<<__EOF__'
-              echo "$INPUT_SDK"
-              echo '__EOF__'
-            } >> "$GITHUB_OUTPUT"
-          elif [ -n "$JSON_SDK" ]; then
-            echo "dotnet_version=$JSON_SDK" >> "$GITHUB_OUTPUT"
-          else
-            echo "❌ dotnetVersion not provided and no dotnetSdk defined in eng/package-versioning.json for this package/profile."
-            exit 1
-          fi
+          LATEST_TAG=$(gh release view --repo "${{ github.repository }}" --json tagName -q .tagName 2>/dev/null || echo "v0.0.1")
+          BASE="${LATEST_TAG#v}"
+          echo "package_version=${BASE}.preview.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: ${{ steps.sdk.outputs.dotnet_version }}
+          dotnet-version: ${{ inputs.dotnetVersion }}
 
       - name: Restore
         run: dotnet restore ${{ inputs.solution }}

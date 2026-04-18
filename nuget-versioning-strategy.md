@@ -104,17 +104,108 @@ New file: `.github/workflows/publish-release.yml`
 - Triggered by consumer caller on tag push (`vX.Y.Z`)
 - Validates `eng/package-versioning.json` exists
 - Extracts version from tag
-- **Validates exact prefix match**: tag `v1.4.0` must match `defaultVersionPrefix: 1.4.0` exactly; tag `v9.0.0` must match `profiles.net9.versionPrefix: 9.0.0` exactly
+- **Validates exact prefix+suffix match**: tag `v1.4.0` must match `defaultVersionPrefix: 1.4.0`; tag `v0.0.2-alpha` must match `prefix: 0.0.2` + `suffix: alpha`
 - Re-builds from tagged commit (clean build, no artifact promotion)
-- Publishes stable version
-- Creates git tag (already present from push event — no new tag needed)
-- Auto-creates GitHub Release with generated release notes
+- Publishes to NuGet
+- **Promotes existing Release Drafter draft** via `gh release edit --draft=false` when draft tag matches pushed tag
+- Falls back to `softprops/action-gh-release` with `generate_release_notes: true` if no matching draft exists
+- Marks GitHub Release as pre-release if tag contains a version suffix (e.g. `-alpha`)
+- For `by-profile` packages, one shared draft covers all profiles
 
 ## 4. Release Drafter
 
-- Out of scope for this implementation
-- Will maintain release notes and determine next intended version
-- Does NOT publish
+New reusable workflow: `.github/workflows/release-drafter.yml`
+Config: `.github/release-drafter.yml` (lives in devops-templates, shared by all consumers)
+
+### Triggers
+```yaml
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+```
+
+### Job condition
+```yaml
+if: github.event_name == 'push' || github.event.pull_request.draft == false
+```
+- PR events run the autolabeler only (labels applied before merge)
+- Draft updates only happen on push to `main`
+- `workflow_dispatch` allows manual refresh
+
+### Permissions
+`contents: write`, `pull-requests: read` — `GITHUB_TOKEN` only, no secrets required from callers
+
+### Concurrency
+```yaml
+concurrency:
+  group: release-drafter-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+### Autolabeler (inside release-drafter config)
+
+| PR Title Prefix | Label |
+|----------------|-------|
+| `feat` | `type: feat` |
+| `fix` | `type: fix` |
+| `docs` | `type: docs` |
+| `refactor` | `type: refactor` |
+| `test` | `type: test` |
+| `chore` | `type: chore` |
+| `ci` | `type: ci` |
+| `revert` | `type: revert` |
+| title contains `!` | `breaking-change` |
+
+### Release Note Categories
+
+| Section | Labels |
+|---------|--------|
+| 🚀 Features | `type: feat` |
+| 🐛 Bug Fixes | `type: fix` |
+| 📚 Documentation | `type: docs` |
+| 🔄 Refactoring | `type: refactor` |
+| ✅ Tests | `type: test` |
+| 🔧 Maintenance | `type: chore`, `type: ci`, `type: revert` |
+| ⚠️ Breaking Changes | `breaking-change` |
+
+### Version Resolution
+
+| Label | Bump |
+|-------|------|
+| `breaking-change` | major |
+| `type: feat` | minor |
+| everything else | patch (default) |
+
+### Include / Exclude
+- **Include**: all `type:` labels + `breaking-change`
+- **Exclude**: `skip-changelog`, `internal`
+
+### Release Notes Template
+```md
+## Changes
+
+$CHANGES
+```
+
+### Does NOT publish to NuGet
+
+## 5. PR Title Check
+
+New reusable workflow: `.github/workflows/pr-title-check.yml`
+
+- Triggered on `pull_request` events
+- Uses `amannn/action-semantic-pull-request@v6`
+- Skips validation when `github.actor == 'dependabot[bot]'`
+- Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`, `revert`
+- Format: `type(optional-scope): description`
+  - Description must start with lowercase
+  - Scope must be lowercase, alphanumeric + hyphens
+
+### Rollout: structured-logging + dynamodb-efcore-provider (pilot repos)
 
 ---
 
