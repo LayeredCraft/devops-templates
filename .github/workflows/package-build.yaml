@@ -34,14 +34,14 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore /p:Version=${{ env.VERSION }} /p:InformationalVersion=${{ env.VERSION }}
 
       - name: Test Code
         if: inputs.hasTests == true
         run: dotnet test --no-restore
 
       - name: Pack
-        run: dotnet pack --configuration Release -o artifacts --no-build /p:Version=${{ env.VERSION }}
+        run: dotnet pack --configuration Release -o artifacts --no-build /p:Version=${{ env.VERSION }} /p:InformationalVersion=${{ env.VERSION }}
 
       - name: Publish to Nuget
         run: dotnet nuget push **/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
