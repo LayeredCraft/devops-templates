@@ -55,15 +55,16 @@ jobs:
 
       - name: Resolve preview version
         id: version
+        shell: bash
         run: |
-          RESOLVED="${{ steps.release-drafter.outputs.resolved_version }}"
-          if [ -z "$RESOLVED" ]; then
-            echo "❌ Release Drafter returned an empty resolved_version."
-            echo "   Ensure .github/release-drafter.yml is configured correctly."
+          resolved="${{ steps.release-drafter.outputs.resolved_version }}"
+          if [[ -z "$resolved" ]]; then
+            echo "::error::Release Drafter returned an empty resolved_version. Ensure .github/release-drafter.yml is configured correctly."
             exit 1
           fi
-          BASE="${RESOLVED%%-*}"
-          echo "package_version=${BASE}-${{ inputs.prereleaseIdentifier }}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          base="${resolved%%-*}"
+          package_version="${base}-${{ inputs.prereleaseIdentifier }}.${{ github.run_number }}"
+          printf 'package_version=%s\n' "$package_version" | tee -a "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
@@ -74,14 +75,14 @@ jobs:
         run: dotnet restore ${{ inputs.solution }}
 
       - name: Build
-        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore /p:Version=${{ steps.version.outputs.package_version }}
 
       - name: Test
         if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --no-build --configuration Release --no-restore
+        run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-build
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
       - name: Publish to NuGet
         run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
