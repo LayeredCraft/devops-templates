@@ -74,14 +74,14 @@ jobs:
         run: dotnet restore ${{ inputs.solution }}
 
       - name: Build
-        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore /p:Version="${{ steps.version.outputs.package_version }}" /p:InformationalVersion="${{ steps.version.outputs.package_version }}"
 
       - name: Test
-        if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-restore
+          if: inputs.hasTests == true
+          run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-restore
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version="${{ steps.version.outputs.package_version }}" /p:InformationalVersion="${{ steps.version.outputs.package_version }}"
 
       - name: Publish to NuGet
         run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
