@@ -82,7 +82,7 @@ jobs:
         run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-restore --no-build
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
       - name: Publish to NuGet
         run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
