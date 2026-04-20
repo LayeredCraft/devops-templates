@@ -79,7 +79,7 @@ jobs:
 
       - name: Test
         if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-restore --no-build
+        run: dotnet test --solution ${{ inputs.solution }} --configuration Release --no-build
 
       - name: Pack
         run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
