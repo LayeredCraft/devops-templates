@@ -27,6 +27,27 @@ jobs:
       runCdk: true
 ```
 
+## Draft Pull Requests
+
+Draft pull requests run only lightweight feedback workflows. `pr-title-check.yml` can still run on draft PRs, but workflows that build, deploy, publish packages, tag commits, or update release metadata skip draft PRs.
+
+The guarded reusable workflows are:
+
+- `.github/workflows/pr-build.yaml`
+- `.github/workflows/build-deploy.yaml`
+- `.github/workflows/package-build.yaml`
+- `.github/workflows/publish-preview.yml`
+- `.github/workflows/publish-release.yml`
+- `.github/workflows/release-drafter.yml` autolabel job
+
+When a PR is marked ready for review, callers should trigger on `ready_for_review` so skipped checks run:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+```
+
 ## Permissions
 When using these shared workflows, make sure to enable Read and Write permissions for your GitHub Actions. This is necessary for the workflows to access and modify the repository contents as needed.
 
