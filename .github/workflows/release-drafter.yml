@@ -20,7 +20,7 @@ permissions:
 jobs:
   autolabel:
     runs-on: ubuntu-latest
-    if: inputs.event_name == 'pull_request' && inputs.pr_draft == false
+    if: inputs.event_name == 'pull_request' && inputs.pr_draft == false && github.event.pull_request.draft != true
 
     steps:
       - uses: release-drafter/release-drafter/autolabeler@v7
