@@ -419,7 +419,7 @@ jobs:
         run: |
           SYNTH_TARGET_ARG=""
           if [ -n "${{ inputs.stackName }}" ]; then
-            SYNTH_TARGET_ARG="--context cdkSynthTarget=${{ inputs.stackName }}"
+            SYNTH_TARGET_ARG="--context stackGroup=${{ inputs.stackName }}"
           fi
           npx aws-cdk deploy --require-approval never --context releaseVersion=${{ env.RELEASE_VERSION }} $SYNTH_TARGET_ARG ${{ env.DEPLOY_ENV }}
 
