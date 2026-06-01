@@ -102,6 +102,10 @@ on:
         required: false
         default: true
         type: boolean
+      stackName:
+        description: "Base name of the AWS CDK stack (e.g. my-app-stack). When provided, synth targets only my-app-stack-dev and my-app-stack-prod. When omitted, all stacks are synthesized."
+        required: false
+        type: string
       functions:
         description: "JSON array of Lambda functions to build"
         required: false
@@ -449,4 +453,9 @@ jobs:
           TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
           OPENAI_APIKEY: ${{ secrets.OPENAI_APIKEY }}
           OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
-        run: npx aws-cdk synth
+        run: |
+          if [ -n "${{ inputs.stackName }}" ]; then
+            npx aws-cdk synth ${{ inputs.stackName }}-dev ${{ inputs.stackName }}-prod
+          else
+            npx aws-cdk synth
+          fi
