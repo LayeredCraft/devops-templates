@@ -455,7 +455,7 @@ jobs:
           OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
         run: |
           if [ -n "${{ inputs.stackName }}" ]; then
-            npx aws-cdk synth ${{ inputs.stackName }}-dev ${{ inputs.stackName }}-prod
+            npx aws-cdk synth --context cdkSynthTarget=${{ inputs.stackName }} ${{ inputs.stackName }}-dev ${{ inputs.stackName }}-prod
           else
             npx aws-cdk synth
           fi
