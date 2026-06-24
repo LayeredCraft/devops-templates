@@ -16,6 +16,11 @@ on:
         required: false
         default: true
         type: boolean
+      buildConfiguration:
+        description: "Build configuration. When 'auto', derived from release tag (vN.* → Release EFN)."
+        required: false
+        default: "Release"
+        type: string
     secrets:
       NUGET_API_KEY:
         required: true
@@ -24,36 +29,53 @@ permissions:
   contents: write
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      configuration: ${{ steps.cfg.outputs.configuration }}
+      dotnet_version: ${{ steps.cfg.outputs.dotnet_version }}
+      version: ${{ steps.cfg.outputs.version }}
+    steps:
+      - name: Resolve from tag
+        id: cfg
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          if [ "${{ inputs.buildConfiguration }}" = "auto" ]; then
+            MAJOR="${VERSION%%.*}"
+            echo "configuration=Release EF${MAJOR}" >> "$GITHUB_OUTPUT"
+            echo "dotnet_version=${MAJOR}.0.x"      >> "$GITHUB_OUTPUT"
+          else
+            echo "configuration=${{ inputs.buildConfiguration }}" >> "$GITHUB_OUTPUT"
+            echo "dotnet_version=${{ inputs.dotnetVersion }}"     >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: [resolve]
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Resolve version from tag
-        id: version
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          echo "package_version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: ${{ inputs.dotnetVersion }}
+          dotnet-version: ${{ needs.resolve.outputs.dotnet_version }}
 
       - name: Restore
         run: dotnet restore ${{ inputs.solution }}
 
       - name: Build
-        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet build ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }}
 
       - name: Test
         if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --no-build --configuration Release --no-restore
+        run: dotnet test --solution ${{ inputs.solution }} --no-build --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration Release --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }} /p:InformationalVersion=${{ steps.version.outputs.package_version }}
+        run: dotnet pack ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-build -o artifacts /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }}
 
       - name: Publish to NuGet
         run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
