@@ -1,5 +1,5 @@
 name: PR Build
-
+# Reusable workflow — called by consumer repos on pull_request events.
 on:
   workflow_call:
     secrets:
