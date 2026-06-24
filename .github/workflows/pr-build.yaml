@@ -162,7 +162,7 @@ jobs:
 
       - name: Restore Dependencies
         if: env.NEEDS_DOTNET == 'true'
-        run: dotnet restore ${{ inputs.solution }}
+        run: dotnet restore ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}"
 
       - name: Build Code
         if: env.NEEDS_DOTNET == 'true'
