@@ -47,7 +47,11 @@ jobs:
             echo "dotnet_version=${MAJOR}.0.x"      >> "$GITHUB_OUTPUT"
           else
             echo "configuration=${{ inputs.buildConfiguration }}" >> "$GITHUB_OUTPUT"
-            echo "dotnet_version=${{ inputs.dotnetVersion }}"     >> "$GITHUB_OUTPUT"
+            {
+              echo "dotnet_version<<EOF"
+              echo "${{ inputs.dotnetVersion }}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
