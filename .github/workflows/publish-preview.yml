@@ -75,7 +75,7 @@ jobs:
           dotnet-version: ${{ inputs.dotnetVersion }}
 
       - name: Restore
-        run: dotnet restore ${{ inputs.solution }}
+        run: dotnet restore ${{ inputs.solution }} -p:Configuration="${{ inputs.buildConfiguration }}"
 
       - name: Build
         run: dotnet build ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-restore /p:Version=${{ steps.version.outputs.package_version }}
