@@ -1,0 +1,30 @@
+name: NuGet Push
+description: Exchanges a GitHub OIDC token for a temporary NuGet API key and pushes packed artifacts.
+
+inputs:
+  nuget_user:
+    description: "NuGet.org username of the trusted publisher policy creator."
+    required: true
+  artifact_name:
+    description: "Name of the artifact containing the .nupkg files."
+    required: false
+    default: "nuget-packages"
+
+runs:
+  using: composite
+  steps:
+    - name: NuGet Login (OIDC)
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: ${{ inputs.nuget_user }}
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: artifacts
+
+    - name: Push to NuGet
+      shell: bash
+      run: dotnet nuget push artifacts/**/*.nupkg -k "${{ steps.login.outputs.NUGET_API_KEY }}" -s https://api.nuget.org/v3/index.json --skip-duplicate
