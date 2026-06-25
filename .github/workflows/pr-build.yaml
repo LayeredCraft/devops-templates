@@ -1,5 +1,5 @@
 name: PR Build
-
+# Reusable workflow - called by consumer repos on pull_request events.
 on:
   workflow_call:
     secrets:
@@ -162,11 +162,11 @@ jobs:
 
       - name: Restore Dependencies
         if: env.NEEDS_DOTNET == 'true'
-        run: dotnet restore ${{ inputs.solution }}
+        run: dotnet restore ${{ inputs.solution }} -p:Configuration="${{ inputs.buildConfiguration }}"
 
       - name: Build Code
         if: env.NEEDS_DOTNET == 'true'
-        run: dotnet build ${{ inputs.solution }} --configuration ${{ inputs.buildConfiguration }} --no-restore
+        run: dotnet build ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-restore
 
       - name: Test Code
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == false
@@ -174,7 +174,7 @@ jobs:
           SOLUTION="${{ inputs.solution }}"
           SOLUTION_ARGS=()
           [ -n "$SOLUTION" ] && SOLUTION_ARGS+=(--solution "$SOLUTION")
-          dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration Release
+          dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration "${{ inputs.buildConfiguration }}"
 
       - name: Test Code with Legacy Coverage
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
@@ -186,7 +186,7 @@ jobs:
             --collect:"XPlat Code Coverage" \
             --results-directory ./coverage \
             --logger trx \
-            --configuration Release \
+            --configuration "${{ inputs.buildConfiguration }}" \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
       - name: Test Code with MTP Coverage
@@ -202,7 +202,7 @@ jobs:
 
           dotnet test "${SOLUTION_ARGS[@]}" --no-restore \
             --results-directory ./coverage \
-            --configuration Release \
+            --configuration "${{ inputs.buildConfiguration }}" \
             --report-xunit-trx \
             --coverage \
             $COVERAGE_SETTINGS \
@@ -241,7 +241,7 @@ jobs:
 
       - name: Build and Publish Blazor WebAssembly
         if: env.NEEDS_DOTNET == 'true' && inputs.webPath != ''
-        run: dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }}
+        run: dotnet publish ${{ inputs.webPath }} --configuration "${{ inputs.buildConfiguration }}" --no-restore --output ${{ env.outputPath }}
 
       - name: Install jq
         if: inputs.functions != '[]' || inputs.spaSites != '[]'
@@ -259,7 +259,7 @@ jobs:
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
           
             echo "Packaging $NAME from FUNC_PATH..."
-            dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
+            dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration "${{ inputs.buildConfiguration }}" --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           
             echo "Packaged: $ZIP_PATH"
           done
