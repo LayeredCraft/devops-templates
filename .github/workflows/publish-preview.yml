@@ -31,12 +31,6 @@ on:
         required: false
         default: "release-drafter.yml"
         type: string
-    secrets:
-      NUGET_API_KEY:
-        required: false
-      NUGET_USER:
-        required: false
-
 permissions:
   contents: write
   pull-requests: write
