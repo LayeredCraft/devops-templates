@@ -31,18 +31,16 @@ on:
         required: false
         default: "release-drafter.yml"
         type: string
-      nuget_api_key:
-        description: "NuGet API key obtained via OIDC in the caller. Falls back to NUGET_API_KEY secret."
-        required: false
-        default: ""
-        type: string
     secrets:
       NUGET_API_KEY:
+        required: false
+      NUGET_USER:
         required: false
 
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
   publish:
@@ -92,12 +90,15 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
-      - name: Mask NuGet API key
-        if: inputs.nuget_api_key != ''
-        run: echo "::add-mask::${{ inputs.nuget_api_key }}"
+      - name: NuGet Login (OIDC)
+        if: secrets.NUGET_USER != ''
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Publish to NuGet
         run: |
-          KEY="${{ inputs.nuget_api_key }}"
+          KEY="${{ steps.login.outputs.NUGET_API_KEY }}"
           if [ -z "$KEY" ]; then KEY="${{ secrets.NUGET_API_KEY }}"; fi
           dotnet nuget push artifacts/**/*.nupkg -k "$KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
