@@ -89,7 +89,4 @@ jobs:
         run: dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
       - name: Publish to NuGet
-        run: |
-          KEY="${{ inputs.nuget_api_key }}"
-          if [ -z "$KEY" ]; then KEY="${{ secrets.NUGET_API_KEY }}"; fi
-          dotnet nuget push artifacts/**/*.nupkg -k "$KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push artifacts/**/*.nupkg -k "${{ inputs.nuget_api_key }}" -s https://api.nuget.org/v3/index.json --skip-duplicate
