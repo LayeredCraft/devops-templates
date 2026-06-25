@@ -31,10 +31,14 @@ on:
         required: false
         default: "release-drafter.yml"
         type: string
+      nuget_api_key:
+        description: "NuGet API key. OIDC callers pass this; non-OIDC callers rely on NUGET_API_KEY secret."
+        required: false
+        default: ""
+        type: string
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 jobs:
   publish:
@@ -84,15 +88,8 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
-      - name: NuGet Login (OIDC)
-        uses: NuGet/login@v1
-        id: login
-        continue-on-error: true
-        with:
-          user: ${{ secrets.NUGET_USER }}
-
       - name: Publish to NuGet
         run: |
-          KEY="${{ steps.login.outputs.NUGET_API_KEY }}"
+          KEY="${{ inputs.nuget_api_key }}"
           if [ -z "$KEY" ]; then KEY="${{ secrets.NUGET_API_KEY }}"; fi
           dotnet nuget push artifacts/**/*.nupkg -k "$KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
