@@ -21,10 +21,6 @@ on:
         required: false
         default: "Release"
         type: string
-    secrets:
-      NUGET_API_KEY:
-        required: true
-
 permissions:
   contents: write
 
@@ -81,5 +77,8 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-build -o artifacts /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }}
 
-      - name: Publish to NuGet
-        run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/**/*.nupkg

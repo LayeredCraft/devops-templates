@@ -31,10 +31,6 @@ on:
         required: false
         default: "release-drafter.yml"
         type: string
-    secrets:
-      NUGET_API_KEY:
-        required: true
-
 permissions:
   contents: write
   pull-requests: write
@@ -87,5 +83,8 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
 
-      - name: Publish to NuGet
-        run: dotnet nuget push artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/**/*.nupkg
