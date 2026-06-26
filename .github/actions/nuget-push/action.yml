@@ -6,7 +6,7 @@ inputs:
     description: "NuGet.org username of the trusted publisher policy creator."
     required: true
   artifact_name:
-    description: "Artifact name or glob pattern (e.g. 'nuget-packages-*') to download. Supports multiple artifacts via pattern."
+    description: "Name of the artifact containing the .nupkg files."
     required: false
     default: "nuget-packages"
 
@@ -22,9 +22,8 @@ runs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: ${{ inputs.artifact_name }}
+        name: ${{ inputs.artifact_name }}
         path: artifacts
-        merge-multiple: true
 
     - name: Push to NuGet
       shell: bash
