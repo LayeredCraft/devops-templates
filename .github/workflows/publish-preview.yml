@@ -31,6 +31,11 @@ on:
         required: false
         default: "release-drafter.yml"
         type: string
+      artifact_name:
+        description: "Name for the uploaded artifact. Override when using a matrix to ensure uniqueness per entry."
+        required: false
+        default: "nuget-packages"
+        type: string
 permissions:
   contents: write
   pull-requests: write
@@ -86,5 +91,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nuget-packages
+          name: ${{ inputs.artifact_name }}
           path: artifacts/**/*.nupkg
