@@ -1,7 +1,12 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
+version-template: '$MAJOR.$MINOR'
 commitish: main
 
+# Two-part Major.Minor versioning only (no patch component) — every
+# non-major label bumps $MINOR, so it increments on every release
+# regardless of label instead of silently accumulating in a $PATCH
+# digit that version-template above wouldn't even display.
 version-resolver:
   major:
     labels:
@@ -9,8 +14,6 @@ version-resolver:
   minor:
     labels:
       - 'type: feat'
-  patch:
-    labels:
       - 'type: fix'
       - 'type: docs'
       - 'type: refactor'
@@ -18,7 +21,7 @@ version-resolver:
       - 'type: chore'
       - 'type: ci'
       - 'type: revert'
-  default: patch
+  default: minor
 
 autolabeler:
   - label: 'type: feat'
