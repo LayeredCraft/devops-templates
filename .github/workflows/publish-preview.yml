@@ -50,7 +50,7 @@ jobs:
 
       - name: Resolve next version via Release Drafter
         id: release-drafter
-        uses: release-drafter/release-drafter@v7
+        uses: release-drafter/release-drafter@v7.5.1
         with:
           config-name: ${{ inputs.drafterConfig }}
           dry-run: true
@@ -71,7 +71,7 @@ jobs:
           printf 'package_version=%s\n' "$package_version" | tee -a "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v5.4.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
 
