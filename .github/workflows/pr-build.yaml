@@ -152,11 +152,11 @@ jobs:
           exit 1
         
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup .NET
         if: env.NEEDS_DOTNET == 'true'
-        uses: actions/setup-dotnet@v5.4.0
+        uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
 
@@ -225,7 +225,7 @@ jobs:
 
       - name: Upload Coverage Reports
         if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-reports
           path: |
@@ -291,7 +291,7 @@ jobs:
           
       - name: Setup pnpm
         if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ inputs.pnpmVersion }}
       
@@ -301,13 +301,13 @@ jobs:
       
       - name: Setup Node.js (no cache)
         if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.nodeVersion }}
 
       - name: Setup Node.js (with cache)
         if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.nodeVersion }}
           cache: ${{ inputs.packageManager }}
@@ -433,7 +433,7 @@ jobs:
 
       - name: Configure AWS Credentials via OIDC
         if: inputs.runCdk == true
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           audience: sts.amazonaws.com
           aws-region: us-east-1
