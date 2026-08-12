@@ -50,7 +50,7 @@ jobs:
 
       - name: Resolve next version via Release Drafter
         id: release-drafter
-        uses: release-drafter/release-drafter@v7.6.0
+        uses: release-drafter/release-drafter@v7.7.0
         with:
           config-name: ${{ inputs.drafterConfig }}
           dry-run: true
