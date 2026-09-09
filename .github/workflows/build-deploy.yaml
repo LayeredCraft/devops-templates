@@ -173,10 +173,6 @@ jobs:
           fi
           dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }} -p:WasmApplicationEnvironmentName=$WASM_ENV
 
-      - name: Install jq
-        if: inputs.functions != '[]' || inputs.spaSites != '[]'
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Build and Package All Lambda Functions
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
