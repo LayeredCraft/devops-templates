@@ -26,6 +26,11 @@ on:
         required: false
         default: "Release"
         type: string
+      targetFramework:
+        description: "Target framework moniker for a single-TFM preview publish out of a multi-targeted project (e.g. net10.0). Empty (default) restores/builds/tests/packs every TFM the project declares, preserving existing behavior."
+        required: false
+        default: ""
+        type: string
       drafterConfig:
         description: "Release Drafter config file name (e.g. release-drafter-ef10.yml)."
         required: false
@@ -76,17 +81,37 @@ jobs:
           dotnet-version: ${{ inputs.dotnetVersion }}
 
       - name: Restore
-        run: dotnet restore ${{ inputs.solution }} -p:Configuration="${{ inputs.buildConfiguration }}"
+        run: |
+          FRAMEWORK_PROPS=()
+          if [ -n "${{ inputs.targetFramework }}" ]; then
+            FRAMEWORK_PROPS+=(-p:TargetFrameworks="${{ inputs.targetFramework }}")
+          fi
+          dotnet restore ${{ inputs.solution }} -p:Configuration="${{ inputs.buildConfiguration }}" "${FRAMEWORK_PROPS[@]}"
 
       - name: Build
-        run: dotnet build ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-restore /p:Version=${{ steps.version.outputs.package_version }}
+        run: |
+          FRAMEWORK_ARGS=()
+          if [ -n "${{ inputs.targetFramework }}" ]; then
+            FRAMEWORK_ARGS+=(--framework "${{ inputs.targetFramework }}")
+          fi
+          dotnet build ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-restore /p:Version=${{ steps.version.outputs.package_version }} "${FRAMEWORK_ARGS[@]}"
 
       - name: Test
         if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build
+        run: |
+          FRAMEWORK_ARGS=()
+          if [ -n "${{ inputs.targetFramework }}" ]; then
+            FRAMEWORK_ARGS+=(--framework "${{ inputs.targetFramework }}")
+          fi
+          dotnet test --solution ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build "${FRAMEWORK_ARGS[@]}"
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }}
+        run: |
+          TFM_PROPS=()
+          if [ -n "${{ inputs.targetFramework }}" ]; then
+            TFM_PROPS+=(-p:TargetFrameworks="${{ inputs.targetFramework }}")
+          fi
+          dotnet pack ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-build -o artifacts /p:Version=${{ steps.version.outputs.package_version }} "${TFM_PROPS[@]}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

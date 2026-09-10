@@ -21,6 +21,11 @@ on:
         required: false
         default: "Release"
         type: string
+      targetFramework:
+        description: "Target framework moniker for a single-TFM release out of a multi-targeted project (e.g. net10.0). When 'auto', derived from the release tag's major version (vN.* → netN.0). Empty (default) restores/builds/tests/packs every TFM the project declares, preserving existing behavior."
+        required: false
+        default: ""
+        type: string
 permissions:
   contents: write
 
@@ -31,14 +36,15 @@ jobs:
       configuration: ${{ steps.cfg.outputs.configuration }}
       dotnet_version: ${{ steps.cfg.outputs.dotnet_version }}
       version: ${{ steps.cfg.outputs.version }}
+      target_framework: ${{ steps.cfg.outputs.target_framework }}
     steps:
       - name: Resolve from tag
         id: cfg
         run: |
           TAG="${{ github.event.release.tag_name }}"
           VERSION="${TAG#v}"
+          MAJOR="${VERSION%%.*}"
           if [ "${{ inputs.buildConfiguration }}" = "auto" ]; then
-            MAJOR="${VERSION%%.*}"
             echo "configuration=Release EF${MAJOR}" >> "$GITHUB_OUTPUT"
             echo "dotnet_version=${MAJOR}.0.x"      >> "$GITHUB_OUTPUT"
           else
@@ -48,6 +54,11 @@ jobs:
               echo "${{ inputs.dotnetVersion }}"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ inputs.targetFramework }}" = "auto" ]; then
+            echo "target_framework=net${MAJOR}.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "target_framework=${{ inputs.targetFramework }}" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -65,17 +76,37 @@ jobs:
           dotnet-version: ${{ needs.resolve.outputs.dotnet_version }}
 
       - name: Restore
-        run: dotnet restore ${{ inputs.solution }} -p:Configuration="${{ needs.resolve.outputs.configuration }}"
+        run: |
+          FRAMEWORK_PROPS=()
+          if [ -n "${{ needs.resolve.outputs.target_framework }}" ]; then
+            FRAMEWORK_PROPS+=(-p:TargetFrameworks="${{ needs.resolve.outputs.target_framework }}")
+          fi
+          dotnet restore ${{ inputs.solution }} -p:Configuration="${{ needs.resolve.outputs.configuration }}" "${FRAMEWORK_PROPS[@]}"
 
       - name: Build
-        run: dotnet build ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }}
+        run: |
+          FRAMEWORK_ARGS=()
+          if [ -n "${{ needs.resolve.outputs.target_framework }}" ]; then
+            FRAMEWORK_ARGS+=(--framework "${{ needs.resolve.outputs.target_framework }}")
+          fi
+          dotnet build ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }} "${FRAMEWORK_ARGS[@]}"
 
       - name: Test
         if: inputs.hasTests == true
-        run: dotnet test --solution ${{ inputs.solution }} --no-build --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore
+        run: |
+          FRAMEWORK_ARGS=()
+          if [ -n "${{ needs.resolve.outputs.target_framework }}" ]; then
+            FRAMEWORK_ARGS+=(--framework "${{ needs.resolve.outputs.target_framework }}")
+          fi
+          dotnet test --solution ${{ inputs.solution }} --no-build --configuration "${{ needs.resolve.outputs.configuration }}" --no-restore "${FRAMEWORK_ARGS[@]}"
 
       - name: Pack
-        run: dotnet pack ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-build -o artifacts /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }}
+        run: |
+          TFM_PROPS=()
+          if [ -n "${{ needs.resolve.outputs.target_framework }}" ]; then
+            TFM_PROPS+=(-p:TargetFrameworks="${{ needs.resolve.outputs.target_framework }}")
+          fi
+          dotnet pack ${{ inputs.solution }} --configuration "${{ needs.resolve.outputs.configuration }}" --no-build -o artifacts /p:Version=${{ needs.resolve.outputs.version }} /p:InformationalVersion=${{ needs.resolve.outputs.version }} "${TFM_PROPS[@]}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
