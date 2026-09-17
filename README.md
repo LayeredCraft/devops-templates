@@ -48,6 +48,19 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 ```
 
+## Lambda Native AOT custom build image
+
+`build-deploy.yaml` and `pr-build.yaml` support a Lambda function entry with `nativeAot: true` when AWS Lambda Tools lacks an official build image for the requested SDK and ARM64 Native AOT combination.
+
+```yaml
+functions: '[{"path":"src/MyLambda","name":"my-lambda","nativeAot":true}]'
+lambdaRuntimeVersion: net11.0
+```
+
+The reusable composite action reads the consumer repository's `global.json`, builds a local ARM64 Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus that exact SDK, and calls `dotnet-lambda package` with its supported custom-container options. Lambda Tools still performs publish and ZIP packaging. Docker is required; the image is local and is not published.
+
+`lambdaNativeAotTemplateRef` defaults to `main` and exists only to select the action assets. Consumers normally do not set it; it can point at a temporary shared-workflow branch for dogfooding. Once AWS supplies the matching official image, remove `nativeAot: true` and the custom-container path.
+
 ## NuGet Trusted Publishing (OIDC)
 
 NuGet packages are published using [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/publish-a-package#trusted-publishers) via GitHub's OIDC token exchange rather than a static API key.

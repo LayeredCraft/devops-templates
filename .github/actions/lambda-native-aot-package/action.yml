@@ -1,0 +1,48 @@
+name: Package Lambda Native AOT
+description: Build a local AL2023 ARM64 Native AOT image using the consumer global.json SDK, then package with Amazon.Lambda.Tools.
+inputs:
+  functions:
+    description: JSON Lambda function definitions; nativeAot enables the custom image for that function.
+    required: true
+  framework:
+    required: true
+  configuration:
+    required: true
+  output-path:
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: sdk
+      shell: bash
+      run: |
+        set -euo pipefail
+        SDK_VERSION="$(node -p "require('./global.json').sdk.version")"
+        echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
+        echo "enabled=$(echo '${{ inputs.functions }}' | jq 'any(.[]; .nativeAot == true)')" >> "$GITHUB_OUTPUT"
+        echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
+    - shell: bash
+      if: steps.sdk.outputs.enabled == 'true'
+      env:
+        SDK_VERSION: ${{ steps.sdk.outputs.version }}
+      run: |
+        set -euo pipefail
+        IMAGE="layeredcraft-lambda-native-aot:${SDK_VERSION}-arm64-local"
+        docker build --platform linux/arm64 --build-arg "DOTNET_SDK_VERSION=$SDK_VERSION" --tag "$IMAGE" "$GITHUB_ACTION_PATH"
+        echo "LAMBDA_NATIVE_AOT_BUILD_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+    - shell: bash
+      run: |
+        set -euo pipefail
+        FUNCTIONS='${{ inputs.functions }}'
+        COUNT=$(echo "$FUNCTIONS" | jq length)
+        for i in $(seq 0 $((COUNT - 1))); do
+          NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+          PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+          NATIVE_AOT=$(echo "$FUNCTIONS" | jq -r ".[$i].nativeAot // false")
+          ZIP_PATH="${{ inputs.output-path }}/${NAME}.zip"
+          ARGS=(-pl "$PATH_VALUE" --configuration "${{ inputs.configuration }}" --no-restore --framework "${{ inputs.framework }}" --output-package "$ZIP_PATH")
+          if [ "$NATIVE_AOT" = true ]; then
+            ARGS+=(--use-container-for-build true --container-image-for-build "$LAMBDA_NATIVE_AOT_BUILD_IMAGE")
+          fi
+          dotnet tool run dotnet-lambda package "${ARGS[@]}"
+        done
