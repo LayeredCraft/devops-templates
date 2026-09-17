@@ -17,10 +17,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        SDK_VERSION="$(node -p "require('./global.json').sdk.version")"
-        echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
-        echo "enabled=$(echo '${{ inputs.functions }}' | jq 'any(.[]; .nativeAot == true)')" >> "$GITHUB_OUTPUT"
-        echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
+        ENABLED="$(echo '${{ inputs.functions }}' | jq 'any(.[]; .nativeAot == true)')"
+        echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
+        if [ "$ENABLED" = true ]; then
+          SDK_VERSION="$(node -p "require('./global.json').sdk.version")"
+          echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
+        fi
     - if: steps.sdk.outputs.enabled == 'true'
       uses: docker/setup-qemu-action@v3
     - if: steps.sdk.outputs.enabled == 'true'
