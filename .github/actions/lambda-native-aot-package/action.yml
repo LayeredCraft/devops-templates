@@ -1,23 +1,27 @@
-name: Package Lambda Native AOT
-description: Build explicitly configured local AL2023 ARM64 Native AOT images using the consumer global.json SDK, then package with Amazon.Lambda.Tools.
+name: Build Lambda Native AOT Image
+description: Build local AL2023 ARM64 Native AOT images declared in Lambda project defaults.
 inputs:
   functions:
-    description: JSON Lambda function definitions; containerImageForBuild enables a custom image for that function.
-    required: true
-  framework:
-    required: true
-  configuration:
-    required: true
-  output-path:
+    description: JSON Lambda function definitions with project paths.
     required: true
 runs:
   using: composite
   steps:
-    - id: sdk
+    - id: custom-container
       shell: bash
       run: |
         set -euo pipefail
-        ENABLED="$(echo '${{ inputs.functions }}' | jq 'any(.[]; (.containerImageForBuild // "") != "")')"
+        FUNCTIONS='${{ inputs.functions }}'
+        ENABLED=false
+        COUNT=$(echo "$FUNCTIONS" | jq length)
+        for i in $(seq 0 $((COUNT - 1))); do
+          PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+          DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+          if [ -f "$DEFAULTS_FILE" ] && [ -n "$(jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE")" ]; then
+            ENABLED=true
+            break
+          fi
+        done
         echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
         if [ "$ENABLED" = true ]; then
           SDK_VERSION="$(node -p "require('./global.json').sdk.version")"
@@ -25,28 +29,16 @@ runs:
           echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
         fi
     - shell: bash
-      if: steps.sdk.outputs.enabled == 'true'
+      if: steps.custom-container.outputs.enabled == 'true'
       env:
-        SDK_VERSION: ${{ steps.sdk.outputs.version }}
+        SDK_VERSION: ${{ steps.custom-container.outputs.version }}
       run: |
         set -euo pipefail
         FUNCTIONS='${{ inputs.functions }}'
         while IFS= read -r IMAGE; do
           docker build --platform linux/arm64 --build-arg "DOTNET_SDK_VERSION=$SDK_VERSION" --tag "$IMAGE" "$GITHUB_ACTION_PATH"
-        done < <(echo "$FUNCTIONS" | jq -r '[.[].containerImageForBuild // empty] | unique[]')
-    - shell: bash
-      run: |
-        set -euo pipefail
-        FUNCTIONS='${{ inputs.functions }}'
-        COUNT=$(echo "$FUNCTIONS" | jq length)
-        for i in $(seq 0 $((COUNT - 1))); do
-          NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+        done < <(for i in $(seq 0 $(( $(echo "$FUNCTIONS" | jq length) - 1 ))); do
           PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
-          CONTAINER_IMAGE=$(echo "$FUNCTIONS" | jq -r ".[$i].containerImageForBuild // empty")
-          ZIP_PATH="${{ inputs.output-path }}/${NAME}.zip"
-          ARGS=(-pl "$PATH_VALUE" --configuration "${{ inputs.configuration }}" --no-restore --framework "${{ inputs.framework }}" --output-package "$ZIP_PATH")
-          if [ -n "$CONTAINER_IMAGE" ]; then
-            ARGS+=(--use-container-for-build true --container-image-for-build "$CONTAINER_IMAGE")
-          fi
-          dotnet tool run dotnet-lambda package "${ARGS[@]}"
-        done
+          DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+          [ -f "$DEFAULTS_FILE" ] && jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE"
+        done | sort -u)

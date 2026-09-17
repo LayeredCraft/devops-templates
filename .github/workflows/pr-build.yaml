@@ -118,7 +118,7 @@ permissions:
 jobs:
   build:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ contains(inputs.functions, '"containerImageForBuild"') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.lambdaRuntimeVersion == 'net11.0' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     
     steps:
       - name: Set Default Output Path If Not Provided
@@ -243,17 +243,30 @@ jobs:
         if: env.NEEDS_DOTNET == 'true' && inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration "${{ inputs.buildConfiguration }}" --no-restore --output ${{ env.outputPath }}
 
-      - name: Build and Package All Lambda Functions
-        if: env.NEEDS_DOTNET == 'true' && contains(inputs.functions, '"containerImageForBuild"')
+      - name: Detect Lambda custom build images
+        id: lambda-custom-container
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
+        shell: bash
+        run: |
+          FUNCTIONS='${{ inputs.functions }}'
+          for i in $(seq 0 $(( $(echo "$FUNCTIONS" | jq length) - 1 ))); do
+            PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+            if [ -f "$DEFAULTS_FILE" ] && [ -n "$(jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE")" ]; then
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+
+      - name: Build Lambda Native AOT images
+        if: steps.lambda-custom-container.outputs.enabled == 'true'
         uses: $/.github/actions/lambda-native-aot-package
         with:
           functions: ${{ inputs.functions }}
-          configuration: ${{ inputs.buildConfiguration }}
-          framework: ${{ inputs.lambdaRuntimeVersion }}
-          output-path: ${{ env.outputPath }}
 
       - name: Build and Package All Lambda Functions
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]' && !contains(inputs.functions, '"containerImageForBuild"')
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
           FUNCTIONS='${{ inputs.functions }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
