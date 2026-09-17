@@ -1,0 +1,44 @@
+name: Build Lambda Native AOT Image
+description: Build local AL2023 ARM64 Native AOT images declared in Lambda project defaults.
+inputs:
+  functions:
+    description: JSON Lambda function definitions with project paths.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: custom-container
+      shell: bash
+      run: |
+        set -euo pipefail
+        FUNCTIONS='${{ inputs.functions }}'
+        ENABLED=false
+        COUNT=$(echo "$FUNCTIONS" | jq length)
+        for i in $(seq 0 $((COUNT - 1))); do
+          PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+          DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+          if [ -f "$DEFAULTS_FILE" ] && [ -n "$(jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE")" ]; then
+            ENABLED=true
+            break
+          fi
+        done
+        echo "enabled=$ENABLED" >> "$GITHUB_OUTPUT"
+        if [ "$ENABLED" = true ]; then
+          SDK_VERSION="$(node -p "require('./global.json').sdk.version")"
+          echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
+        fi
+    - shell: bash
+      if: steps.custom-container.outputs.enabled == 'true'
+      env:
+        SDK_VERSION: ${{ steps.custom-container.outputs.version }}
+      run: |
+        set -euo pipefail
+        FUNCTIONS='${{ inputs.functions }}'
+        while IFS= read -r IMAGE; do
+          docker build --platform linux/arm64 --build-arg "DOTNET_SDK_VERSION=$SDK_VERSION" --tag "$IMAGE" "$GITHUB_ACTION_PATH"
+        done < <(for i in $(seq 0 $(( $(echo "$FUNCTIONS" | jq length) - 1 ))); do
+          PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+          DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+          [ -f "$DEFAULTS_FILE" ] && jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE"
+        done | sort -u)

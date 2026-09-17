@@ -98,7 +98,7 @@ permissions:
 jobs:
   deploy:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.lambdaRuntimeVersion == 'net11.0' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     env:
       outputPath: ${{ github.workspace }}/${{ inputs.outputPath }}
 
@@ -173,21 +173,38 @@ jobs:
           fi
           dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }} -p:WasmApplicationEnvironmentName=$WASM_ENV
 
+      - name: Detect Lambda custom build images
+        id: lambda-custom-container
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
+        shell: bash
+        run: |
+          FUNCTIONS='${{ inputs.functions }}'
+          for i in $(seq 0 $(( $(echo "$FUNCTIONS" | jq length) - 1 ))); do
+            PATH_VALUE=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
+            if [ -f "$DEFAULTS_FILE" ] && [ -n "$(jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE")" ]; then
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+
+      - name: Build Lambda Native AOT images
+        if: steps.lambda-custom-container.outputs.enabled == 'true'
+        uses: $/.github/actions/lambda-native-aot-package
+        with:
+          functions: ${{ inputs.functions }}
+
       - name: Build and Package All Lambda Functions
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
           FUNCTIONS='${{ inputs.functions }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
-          
           for i in $(seq 0 $((COUNT - 1))); do
             NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
             FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
-          
-            echo "Packaging $NAME from FUNC_PATH..."
             dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
-          
-            echo "Packaged: $ZIP_PATH"
           done
 
       - name: Detect JS lockfile for caching

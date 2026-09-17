@@ -48,6 +48,28 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 ```
 
+## Lambda Native AOT custom build image
+
+`build-deploy.yaml` and `pr-build.yaml` use a custom Native AOT container only when a Lambda project's `aws-lambda-tools-defaults.json` explicitly supplies a custom build image. This is useful when AWS Lambda Tools lacks an official build image for the requested SDK and ARM64 Native AOT combination.
+
+```yaml
+functions: '[{"path":"src/MyLambda","name":"my-lambda"}]'
+lambdaRuntimeVersion: net11.0
+```
+
+The Lambda project's `aws-lambda-tools-defaults.json` declares the image used by Lambda Tools:
+
+```json
+{
+  "use-container-for-build": true,
+  "container-image-for-build": "layeredcraft-lambda-native-aot:11.0.100-arm64-local"
+}
+```
+
+The reusable workflow selects GitHub's `ubuntu-24.04-arm` runner for `net11.0`, so Lambda Tools sees the same ARM64 host and Lambda architecture. It detects the project setting, then its composite action reads the consumer repository's `global.json` and builds that local Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus the exact SDK. The normal `dotnet-lambda package` command then reads its own defaults and uses the image. Docker is required; the image is local and is not published.
+
+The composite action is resolved from the same repository and exact revision as the reusable workflow. Once AWS supplies the matching official image, remove `containerImageForBuild` and the custom-container path.
+
 ## NuGet Trusted Publishing (OIDC)
 
 NuGet packages are published using [NuGet Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/publish-a-package#trusted-publishers) via GitHub's OIDC token exchange rather than a static API key.
