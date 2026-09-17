@@ -123,7 +123,7 @@ permissions:
 jobs:
   build:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ contains(fromJSON(inputs.functions).*.nativeAot, true) && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ contains(inputs.functions, '"containerImageForBuild"') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     
     steps:
       - name: Set Default Output Path If Not Provided

@@ -50,16 +50,16 @@ on:
 
 ## Lambda Native AOT custom build image
 
-`build-deploy.yaml` and `pr-build.yaml` support a Lambda function entry with `nativeAot: true` when AWS Lambda Tools lacks an official build image for the requested SDK and ARM64 Native AOT combination.
+`build-deploy.yaml` and `pr-build.yaml` use a custom Native AOT container only when a Lambda function explicitly supplies `containerImageForBuild`. This is useful when AWS Lambda Tools lacks an official build image for the requested SDK and ARM64 Native AOT combination.
 
 ```yaml
-functions: '[{"path":"src/MyLambda","name":"my-lambda","nativeAot":true}]'
+functions: '[{"path":"src/MyLambda","name":"my-lambda","containerImageForBuild":"layeredcraft-lambda-native-aot:11.0.100-arm64-local"}]'
 lambdaRuntimeVersion: net11.0
 ```
 
-The reusable workflow selects GitHub's `ubuntu-24.04-arm` runner for an enabled function, so Lambda Tools sees the same ARM64 host and Lambda architecture. Its composite action reads the consumer repository's `global.json`, builds a local Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus that exact SDK, and calls `dotnet-lambda package` with its supported custom-container options. Lambda Tools still performs publish and ZIP packaging. Docker is required; the image is local and is not published.
+The supplied value is both the local image tag and the image passed to Lambda Tools. The reusable workflow selects GitHub's `ubuntu-24.04-arm` runner for such a function, so Lambda Tools sees the same ARM64 host and Lambda architecture. Its composite action reads the consumer repository's `global.json`, builds that local Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus the exact SDK, and calls `dotnet-lambda package` with its supported custom-container options. Lambda Tools still performs publish and ZIP packaging. Docker is required; the image is local and is not published.
 
-`lambdaNativeAotTemplateRef` defaults to `main` and exists only to select the action assets. Consumers normally do not set it; for a temporary shared-workflow branch, set it to the same ref as the reusable workflow so both assets are tested together. Once AWS supplies the matching official image, remove `nativeAot: true` and the custom-container path.
+`lambdaNativeAotTemplateRef` defaults to `main` and exists only to select the action assets. Consumers normally do not set it; for a temporary shared-workflow branch, set it to the same ref as the reusable workflow so both assets are tested together. Once AWS supplies the matching official image, remove `containerImageForBuild` and the custom-container path.
 
 ## NuGet Trusted Publishing (OIDC)
 
