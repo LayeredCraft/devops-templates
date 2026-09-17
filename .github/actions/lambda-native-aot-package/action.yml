@@ -21,6 +21,10 @@ runs:
         echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
         echo "enabled=$(echo '${{ inputs.functions }}' | jq 'any(.[]; .nativeAot == true)')" >> "$GITHUB_OUTPUT"
         echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
+    - if: steps.sdk.outputs.enabled == 'true'
+      uses: docker/setup-qemu-action@v3
+    - if: steps.sdk.outputs.enabled == 'true'
+      uses: docker/setup-buildx-action@v3
     - shell: bash
       if: steps.sdk.outputs.enabled == 'true'
       env:
@@ -28,7 +32,7 @@ runs:
       run: |
         set -euo pipefail
         IMAGE="layeredcraft-lambda-native-aot:${SDK_VERSION}-arm64-local"
-        docker build --platform linux/arm64 --build-arg "DOTNET_SDK_VERSION=$SDK_VERSION" --tag "$IMAGE" "$GITHUB_ACTION_PATH"
+        docker buildx build --platform linux/arm64 --build-arg "DOTNET_SDK_VERSION=$SDK_VERSION" --tag "$IMAGE" --load "$GITHUB_ACTION_PATH"
         echo "LAMBDA_NATIVE_AOT_BUILD_IMAGE=$IMAGE" >> "$GITHUB_ENV"
     - shell: bash
       run: |
