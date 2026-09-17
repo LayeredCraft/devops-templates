@@ -24,8 +24,6 @@ runs:
           echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
           echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
         fi
-    - if: steps.sdk.outputs.enabled == 'true'
-      uses: docker/setup-qemu-action@v3
     - shell: bash
       if: steps.sdk.outputs.enabled == 'true'
       env:

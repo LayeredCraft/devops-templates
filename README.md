@@ -57,9 +57,9 @@ functions: '[{"path":"src/MyLambda","name":"my-lambda","nativeAot":true}]'
 lambdaRuntimeVersion: net11.0
 ```
 
-The reusable composite action reads the consumer repository's `global.json`, builds a local ARM64 Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus that exact SDK, and calls `dotnet-lambda package` with its supported custom-container options. Lambda Tools still performs publish and ZIP packaging. Docker is required; the image is local and is not published.
+The reusable workflow selects GitHub's `ubuntu-24.04-arm` runner for an enabled function, so Lambda Tools sees the same ARM64 host and Lambda architecture. Its composite action reads the consumer repository's `global.json`, builds a local Amazon Linux 2023 image from the AWS .NET 10 SAM build image plus that exact SDK, and calls `dotnet-lambda package` with its supported custom-container options. Lambda Tools still performs publish and ZIP packaging. Docker is required; the image is local and is not published.
 
-`lambdaNativeAotTemplateRef` defaults to `main` and exists only to select the action assets. Consumers normally do not set it; it can point at a temporary shared-workflow branch for dogfooding. Once AWS supplies the matching official image, remove `nativeAot: true` and the custom-container path.
+`lambdaNativeAotTemplateRef` defaults to `main` and exists only to select the action assets. Consumers normally do not set it; for a temporary shared-workflow branch, set it to the same ref as the reusable workflow so both assets are tested together. Once AWS supplies the matching official image, remove `nativeAot: true` and the custom-container path.
 
 ## NuGet Trusted Publishing (OIDC)
 
