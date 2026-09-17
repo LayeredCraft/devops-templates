@@ -86,11 +86,6 @@ on:
         required: false
         type: string
         default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]
-      lambdaNativeAotTemplateRef:
-        description: "Ref used to obtain Lambda Native AOT composite action assets."
-        required: false
-        default: "main"
-        type: string
       integrationTestSolution:
         description: "Solution file for integration tests to run after CDK deploy. When multiple solution files exist at the root, provide the integration test solution here."
         required: false
@@ -178,22 +173,26 @@ jobs:
           fi
           dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }} -p:WasmApplicationEnvironmentName=$WASM_ENV
 
-      - name: Checkout Lambda packaging action
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
-        uses: actions/checkout@v7
-        with:
-          repository: LayeredCraft/devops-templates
-          ref: ${{ inputs.lambdaNativeAotTemplateRef }}
-          path: .devops-templates
-
       - name: Build and Package All Lambda Functions
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
-        uses: ./.devops-templates/.github/actions/lambda-native-aot-package
+        if: env.NEEDS_DOTNET == 'true' && contains(inputs.functions, '"containerImageForBuild"')
+        uses: $/.github/actions/lambda-native-aot-package
         with:
           functions: ${{ inputs.functions }}
           configuration: ${{ inputs.buildConfiguration }}
           framework: ${{ inputs.lambdaRuntimeVersion }}
           output-path: ${{ env.outputPath }}
+
+      - name: Build and Package All Lambda Functions
+        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]' && !contains(inputs.functions, '"containerImageForBuild"')
+        run: |
+          FUNCTIONS='${{ inputs.functions }}'
+          COUNT=$(echo "$FUNCTIONS" | jq length)
+          for i in $(seq 0 $((COUNT - 1))); do
+            NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+            FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
+            dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
+          done
 
       - name: Detect JS lockfile for caching
         if: env.NEEDS_NODE == 'true'
