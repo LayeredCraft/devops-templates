@@ -260,19 +260,32 @@ jobs:
           echo "enabled=false" >> "$GITHUB_OUTPUT"
 
       - name: Build Lambda Native AOT images
+        id: lambda-native-aot
         if: steps.lambda-custom-container.outputs.enabled == 'true'
         uses: $/.github/actions/lambda-native-aot-package
         with:
           functions: ${{ inputs.functions }}
+          configuration: ${{ inputs.buildConfiguration }}
+          lambdaRuntimeVersion: ${{ inputs.lambdaRuntimeVersion }}
+          outputPath: ${{ env.outputPath }}
 
+      # Functions whose own aws-lambda-tools-defaults.json declares `container-image-for-build` were
+      # already built and packaged by the step above, from an isolated checkout copy - see that
+      # action's own comment for why packaging those in place here would be unsafe. This loop
+      # handles everything else (the ordinary, non-container Lambda Tools path).
       - name: Build and Package All Lambda Functions
         if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
         run: |
           FUNCTIONS='${{ inputs.functions }}'
+          PACKAGED='${{ steps.lambda-native-aot.outputs.packaged-functions || '[]' }}'
           COUNT=$(echo "$FUNCTIONS" | jq length)
           for i in $(seq 0 $((COUNT - 1))); do
             NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
             FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+            if echo "$PACKAGED" | jq -e --arg n "$NAME" 'index($n) != null' >/dev/null; then
+              echo "Skipping $NAME - already packaged by the Native AOT isolated-build step"
+              continue
+            fi
             ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
             dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration "${{ inputs.buildConfiguration }}" --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           done
