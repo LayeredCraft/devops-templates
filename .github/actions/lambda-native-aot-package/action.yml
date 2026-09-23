@@ -81,6 +81,16 @@ runs:
         set -euo pipefail
         FUNCTIONS='${{ inputs.functions }}'
         REPO_ROOT="$(pwd)"
+        # outputPath is caller-supplied and, in this repo's own build-deploy.yaml/pr-build.yaml, is
+        # already an absolute path (${{ github.workspace }}/publish) - never assume it's relative to
+        # REPO_ROOT. Normalize it to an absolute path here (resolving a relative one against
+        # REPO_ROOT) so the ZIP always lands exactly where the caller's own subsequent steps expect
+        # it, and derive rsync's exclude (which needs a source-relative pattern) from that.
+        case "${{ inputs.outputPath }}" in
+          /*) OUTPUT_PATH="${{ inputs.outputPath }}" ;;
+          *) OUTPUT_PATH="$REPO_ROOT/${{ inputs.outputPath }}" ;;
+        esac
+        OUTPUT_PATH_RELATIVE="${OUTPUT_PATH#"$REPO_ROOT"/}"
         PACKAGED='[]'
         COUNT=$(echo "$FUNCTIONS" | jq length)
         for i in $(seq 0 $((COUNT - 1))); do
@@ -98,10 +108,10 @@ runs:
             --exclude='.git/' \
             --exclude='bin/' \
             --exclude='obj/' \
-            --exclude="${{ inputs.outputPath }}/" \
+            --exclude="$OUTPUT_PATH_RELATIVE/" \
             "$REPO_ROOT/" "$STAGE_DIR/"
 
-          ZIP_PATH="$REPO_ROOT/${{ inputs.outputPath }}/${NAME}.zip"
+          ZIP_PATH="$OUTPUT_PATH/${NAME}.zip"
           mkdir -p "$(dirname "$ZIP_PATH")"
 
           (
