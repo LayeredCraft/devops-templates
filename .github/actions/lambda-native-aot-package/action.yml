@@ -1,9 +1,25 @@
 name: Build Lambda Native AOT Image
-description: Build local AL2023 ARM64 Native AOT images declared in Lambda project defaults.
+description: >
+  Builds local AL2023 ARM64 Native AOT images declared in Lambda project defaults, and packages
+  every Lambda function that opts into one from an isolated, freshly-copied checkout (never the
+  workflow's own checkout, which has already had restore/build/test run against it directly).
 inputs:
   functions:
     description: JSON Lambda function definitions with project paths.
     required: true
+  configuration:
+    description: Build configuration to pass to `dotnet lambda package`.
+    required: true
+  lambdaRuntimeVersion:
+    description: Target framework to pass to `dotnet lambda package`.
+    required: true
+  outputPath:
+    description: Directory (relative to the workflow's working directory) to place built ZIPs in.
+    required: true
+outputs:
+  packaged-functions:
+    description: JSON array of function names this action packaged (build-deploy.yaml skips these in its own packaging loop).
+    value: ${{ steps.package.outputs.packaged-functions }}
 runs:
   using: composite
   steps:
@@ -28,6 +44,7 @@ runs:
           echo "version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
           echo "Using .NET SDK $SDK_VERSION from the consumer global.json"
         fi
+
     - shell: bash
       if: steps.custom-container.outputs.enabled == 'true'
       env:
@@ -42,3 +59,77 @@ runs:
           DEFAULTS_FILE="$PATH_VALUE/aws-lambda-tools-defaults.json"
           [ -f "$DEFAULTS_FILE" ] && jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE"
         done | sort -u)
+
+    # Packages every AOT-container-enabled function from an isolated, freshly rsync'd copy of the
+    # checkout, never the checkout in place.
+    #
+    # Why: `dotnet lambda package` picks up `use-container-for-build`/`container-image-for-build`
+    # from the function's own aws-lambda-tools-defaults.json and bind-mounts whatever directory it's
+    # invoked from into that container. By this point in the job, "Restore Dependencies"/"Build
+    # Code"/"Test Code" have already run `dotnet restore`/`build`/`test` directly against this same
+    # checkout - which writes NuGet restore metadata (obj/project.assets.json, obj/*.nuget.g.*) and
+    # build output computed for a different effective configuration (no RID, not self-contained)
+    # than the Native AOT publish this step performs (linux-arm64, self-contained). Packaging in
+    # place risks the container's incremental build reusing that mismatched state: anywhere from an
+    # outright "package not found"/"assembly not referenced" failure to silently producing a package
+    # that mixes the native executable with managed DLLs that should have been compiled into it -
+    # observed directly downstream of this action, in a consumer repo, before this fix.
+    - id: package
+      if: steps.custom-container.outputs.enabled == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        FUNCTIONS='${{ inputs.functions }}'
+        REPO_ROOT="$(pwd)"
+        # outputPath is caller-supplied and, in this repo's own build-deploy.yaml/pr-build.yaml, is
+        # already an absolute path (${{ github.workspace }}/publish) - never assume it's relative to
+        # REPO_ROOT. Normalize it to an absolute path here (resolving a relative one against
+        # REPO_ROOT) so the ZIP always lands exactly where the caller's own subsequent steps expect
+        # it, and derive rsync's exclude (which needs a source-relative pattern) from that.
+        case "${{ inputs.outputPath }}" in
+          /*) OUTPUT_PATH="${{ inputs.outputPath }}" ;;
+          *) OUTPUT_PATH="$REPO_ROOT/${{ inputs.outputPath }}" ;;
+        esac
+        OUTPUT_PATH_RELATIVE="${OUTPUT_PATH#"$REPO_ROOT"/}"
+        PACKAGED='[]'
+        COUNT=$(echo "$FUNCTIONS" | jq length)
+        for i in $(seq 0 $((COUNT - 1))); do
+          NAME=$(echo "$FUNCTIONS" | jq -r ".[$i].name")
+          FUNC_PATH=$(echo "$FUNCTIONS" | jq -r ".[$i].path")
+          DEFAULTS_FILE="$FUNC_PATH/aws-lambda-tools-defaults.json"
+          if [ ! -f "$DEFAULTS_FILE" ] || [ -z "$(jq -r '."container-image-for-build" // empty' "$DEFAULTS_FILE")" ]; then
+            continue
+          fi
+
+          echo "::group::Packaging $NAME (Native AOT, isolated checkout)"
+
+          STAGE_DIR="$(mktemp -d)"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='bin/' \
+            --exclude='obj/' \
+            --exclude="$OUTPUT_PATH_RELATIVE/" \
+            "$REPO_ROOT/" "$STAGE_DIR/"
+
+          ZIP_PATH="$OUTPUT_PATH/${NAME}.zip"
+          mkdir -p "$(dirname "$ZIP_PATH")"
+
+          (
+            cd "$STAGE_DIR"
+            dotnet new tool-manifest --force
+            dotnet tool install Amazon.Lambda.Tools
+            dotnet tool run dotnet-lambda package \
+              -pl "$FUNC_PATH" \
+              --configuration "${{ inputs.configuration }}" \
+              --framework "${{ inputs.lambdaRuntimeVersion }}" \
+              --output-package "$ZIP_PATH"
+          )
+
+          rm -rf "$STAGE_DIR"
+
+          "$GITHUB_ACTION_PATH/validate-package.sh" "$ZIP_PATH" "$NAME"
+
+          PACKAGED=$(echo "$PACKAGED" | jq --arg n "$NAME" '. + [$n]')
+          echo "::endgroup::"
+        done
+        echo "packaged-functions=$(echo "$PACKAGED" | jq -c .)" >> "$GITHUB_OUTPUT"
