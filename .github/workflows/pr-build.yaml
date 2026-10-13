@@ -1,18 +1,11 @@
 name: PR Build
 # Reusable workflow - called by consumer repos on pull_request events.
+#
+# v11: credential-free and least-privilege. Jobs run with read-only repository contents and never
+# request AWS or OIDC credentials, so they are safe to run on untrusted pull request code. Callers
+# need only `contents: read`. CDK synth/diff moved to a dedicated workflow.
 on:
   workflow_call:
-    secrets:
-      TMD_APP_ID: {}
-      TMD_APP_INSTALLATION_ID: {}
-      TMD_APP_PRIVATE_KEY: {}
-      TMD_WEBHOOK_SECRET: {}
-      TMP_APP_ID: {}
-      TMP_APP_INSTALLATION_ID: {}
-      TMP_APP_PRIVATE_KEY: {}
-      TMP_WEBHOOK_SECRET: {}
-      OPENAI_APIKEY: {}
-      OPENAI_ORGANIZATION: {}
     inputs:
       webPath:
         description: "Path to the Blazor WebAssembly project"
@@ -38,19 +31,34 @@ on:
         default: "release"
         type: string
       dotnetVersion:
-        description: ".NET SDK version"
+        description: ".NET SDK version(s) for actions/setup-dotnet, e.g. 11.x or a multi-line list. Leave empty to use globalJsonFile (or a repository-root global.json)."
         required: false
-        default: "9.0.x"
+        default: ""
         type: string
+      globalJsonFile:
+        description: "Optional path to a global.json used by actions/setup-dotnet to select the SDK. Can be combined with dotnetVersion."
+        required: false
+        default: ""
+        type: string
+      dotnetFormat:
+        description: "Run dotnet format --verify-no-changes against the solution"
+        required: false
+        default: false
+        type: boolean
       lambdaRuntimeVersion:
         description: "AWS Lambda runtime version"
         required: false
         default: "net9.0"
         type: string
       nodeVersion:
-        description: "Node version"
+        description: "Node version for Node.js jobs (ignored when nodeVersionFile is set)"
         required: false
-        default: "18.x"
+        default: "lts/*"
+        type: string
+      nodeVersionFile:
+        description: "Optional path to a Node version file (.nvmrc, .node-version, package.json) for Node.js jobs"
+        required: false
+        default: ""
         type: string
       packageManager:
         description: "Package manager to use for Node.js projects (npm or pnpm)"
@@ -58,10 +66,15 @@ on:
         default: "npm"
         type: string
       pnpmVersion:
-        description: "pnpm version to install (only used when packageManager is pnpm)"
+        description: "pnpm version to install. Leave empty to use the packageManager field of each project's package.json (only used when packageManager is pnpm)"
         required: false
-        default: "10"
+        default: ""
         type: string
+      nodeProjects:
+        description: "JSON array of Node.js projects to validate, one check per project. e.g. [{\"name\":\"web\",\"path\":\"app\",\"scripts\":[\"lint\",\"typecheck\",\"test\",\"build\"],\"env\":{\"NEXT_TELEMETRY_DISABLED\":\"1\"}}]. env values must not be secrets."
+        required: false
+        type: string
+        default: '[]'
       outputPath:
         description: "Output directory for builds"
         required: false
@@ -97,13 +110,13 @@ on:
         required: false
         default: ""
         type: string
-      runCdk:  # ✅ New input to control CDK execution
-        description: "Determines if AWS CDK steps should be run"
+      runCdk:
+        description: "Deprecated in v11 and must be false: CDK no longer runs in this credential-free workflow. Use the dedicated CDK workflow instead."
         required: false
-        default: true
+        default: false
         type: boolean
       stackName:
-        description: "Base name of the AWS CDK stack (e.g. my-app-stack). When provided, synth targets only my-app-stack-dev and my-app-stack-prod. When omitted, all stacks are synthesized."
+        description: "Deprecated in v11; ignored. Retained so existing callers upgrade without unexpected-input errors."
         required: false
         type: string
       functions:
@@ -111,16 +124,25 @@ on:
         required: false
         type: string
         default: '[]'  # e.g. [{"path": "src/Foo", "name": "foo-func"}, {"path": "src/Bar", "name": "bar-func"}]
+
 permissions:
-  id-token: write
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+  dotnet:
+    name: dotnet
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      (inputs.solution != '' || inputs.webPath != '' || inputs.hasTests || inputs.functions != '[]')
     runs-on: ${{ inputs.lambdaRuntimeVersion == 'net11.0' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    
+
     steps:
+      - name: Reject removed CDK execution
+        if: inputs.runCdk
+        run: |
+          echo "::error::pr-build v11 no longer runs AWS CDK. Set runCdk: false and use the dedicated CDK workflow; see the devops-templates README (v11 migration)."
+          exit 1
+
       - name: Set Default Output Path If Not Provided
         run: |
           if [ -z "${{ inputs.outputPath }}" ]; then
@@ -129,47 +151,36 @@ jobs:
             echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
 
-      - name: Compute Build Flags
-        run: |
-          needs_dotnet=false
-          if [ -n "${{ inputs.solution }}" ] || [ -n "${{ inputs.webPath }}" ] || [ "${{ inputs.hasTests }}" = "true" ] || [ '${{ inputs.functions }}' != '[]' ]; then
-            needs_dotnet=true
-          fi
-
-          needs_node=false
-          if [ "${{ inputs.runCdk }}" = "true" ] || [ '${{ inputs.spaSites }}' != '[]' ]; then
-            needs_node=true
-          fi
-
-          echo "NEEDS_DOTNET=$needs_dotnet" >> $GITHUB_ENV
-          echo "NEEDS_NODE=$needs_node" >> $GITHUB_ENV
-
       - name: Validate .NET Inputs
-        if: env.NEEDS_DOTNET == 'true' && inputs.solution == ''
+        if: inputs.solution == ''
         run: |
           echo "❌ .NET steps are required but inputs.solution was not provided."
-          echo "   Provide inputs.solution (e.g. MyApp.sln) when using webPath/hasTests/functions." 
+          echo "   Provide inputs.solution (e.g. MyApp.sln) when using webPath/hasTests/functions."
           exit 1
-        
+
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        if: env.NEEDS_DOTNET == 'true'
         uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
+          global-json-file: ${{ inputs.globalJsonFile }}
 
       - name: Restore Dependencies
-        if: env.NEEDS_DOTNET == 'true'
         run: dotnet restore ${{ inputs.solution }} -p:Configuration="${{ inputs.buildConfiguration }}"
 
+      - name: Verify Formatting
+        if: inputs.dotnetFormat
+        run: dotnet format ${{ inputs.solution }} --verify-no-changes --no-restore
+
       - name: Build Code
-        if: env.NEEDS_DOTNET == 'true'
         run: dotnet build ${{ inputs.solution }} --configuration "${{ inputs.buildConfiguration }}" --no-restore
 
       - name: Test Code
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == false
+        if: inputs.hasTests == true && inputs.enableCodeCoverage == false
         run: |
           SOLUTION="${{ inputs.solution }}"
           SOLUTION_ARGS=()
@@ -177,7 +188,7 @@ jobs:
           dotnet test "${SOLUTION_ARGS[@]}" --no-restore --configuration "${{ inputs.buildConfiguration }}"
 
       - name: Test Code with Legacy Coverage
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
+        if: inputs.hasTests == true && inputs.useMtpRunner == false && inputs.enableCodeCoverage == true
         run: |
           SOLUTION="${{ inputs.solution }}"
           SOLUTION_ARGS=()
@@ -190,7 +201,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=${{ inputs.coverageReportFormats }}
 
       - name: Test Code with MTP Coverage
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
+        if: inputs.hasTests == true && inputs.useMtpRunner == true && inputs.enableCodeCoverage == true
         run: |
           SOLUTION="${{ inputs.solution }}"
           SOLUTION_ARGS=()
@@ -210,7 +221,7 @@ jobs:
             --coverage-output-format cobertura
 
       - name: Code Coverage Summary
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == true
+        if: inputs.hasTests == true && inputs.enableCodeCoverage == true
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
           filename: coverage/**/coverage.cobertura.xml
@@ -224,7 +235,7 @@ jobs:
           thresholds: '${{ inputs.coverageThreshold }} 80'
 
       - name: Upload Coverage Reports
-        if: env.NEEDS_DOTNET == 'true' && inputs.hasTests == true && inputs.enableCodeCoverage == true
+        if: inputs.hasTests == true && inputs.enableCodeCoverage == true
         uses: actions/upload-artifact@v7
         with:
           name: coverage-reports
@@ -234,18 +245,18 @@ jobs:
           retention-days: 30
 
       - name: Setup Local .NET Tools
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
+        if: inputs.functions != '[]'
         run: |
           dotnet new tool-manifest --force
           dotnet tool install Amazon.Lambda.Tools
 
       - name: Build and Publish Blazor WebAssembly
-        if: env.NEEDS_DOTNET == 'true' && inputs.webPath != ''
+        if: inputs.webPath != ''
         run: dotnet publish ${{ inputs.webPath }} --configuration "${{ inputs.buildConfiguration }}" --no-restore --output ${{ env.outputPath }}
 
       - name: Detect Lambda custom build images
         id: lambda-custom-container
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
+        if: inputs.functions != '[]'
         shell: bash
         run: |
           FUNCTIONS='${{ inputs.functions }}'
@@ -274,7 +285,7 @@ jobs:
       # action's own comment for why packaging those in place here would be unsafe. This loop
       # handles everything else (the ordinary, non-container Lambda Tools path).
       - name: Build and Package All Lambda Functions
-        if: env.NEEDS_DOTNET == 'true' && inputs.functions != '[]'
+        if: inputs.functions != '[]'
         run: |
           FUNCTIONS='${{ inputs.functions }}'
           PACKAGED='${{ steps.lambda-native-aot.outputs.packaged-functions || '[]' }}'
@@ -290,54 +301,143 @@ jobs:
             dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration "${{ inputs.buildConfiguration }}" --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           done
 
-      - name: Detect JS lockfile for caching
-        if: env.NEEDS_NODE == 'true'
-        id: nodecache
-        shell: bash
+  node:
+    name: node (${{ matrix.project.name }})
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      inputs.nodeProjects != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(inputs.nodeProjects) }}
+
+    steps:
+      - name: Reject removed CDK execution
+        if: inputs.runCdk
         run: |
-          set -e
+          echo "::error::pr-build v11 no longer runs AWS CDK. Set runCdk: false and use the dedicated CDK workflow; see the devops-templates README (v11 migration)."
+          exit 1
 
-          # Prefer pnpm lockfile if present and packageManager is pnpm
-          if [ "${{ inputs.packageManager }}" = "pnpm" ] && ls **/pnpm-lock.yaml 1> /dev/null 2>&1; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "dep=**/pnpm-lock.yaml" >> "$GITHUB_OUTPUT"
-            exit 0
+      - name: Validate Node.js project
+        env:
+          PROJECT: ${{ toJSON(matrix.project) }}
+          PACKAGE_MANAGER: ${{ inputs.packageManager }}
+        run: |
+          set -euo pipefail
+          for field in name path; do
+            if [ -z "$(jq -r --arg f "$field" '.[$f] // empty' <<<"$PROJECT")" ]; then
+              echo "::error::nodeProjects entries require '$field'."
+              exit 1
+            fi
+          done
+          if [ "$(jq '.scripts | length' <<<"$PROJECT")" -eq 0 ]; then
+            echo "::error::nodeProjects entries require a non-empty 'scripts' array."
+            exit 1
           fi
+          case "$PACKAGE_MANAGER" in
+            npm) lockfile=package-lock.json ;;
+            pnpm) lockfile=pnpm-lock.yaml ;;
+            *) echo "::error::packageManager must be npm or pnpm."; exit 1 ;;
+          esac
+          echo "LOCKFILE=$(jq -r '.path' <<<"$PROJECT")/$lockfile" >> "$GITHUB_ENV"
 
-          # Otherwise look for npm lockfile
-          if [ "${{ inputs.packageManager }}" = "npm" ] && ls **/package-lock.json 1> /dev/null 2>&1; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "dep=**/package-lock.json" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-          # No lockfile found => disable caching
-          echo "enabled=false" >> "$GITHUB_OUTPUT"
-          echo "dep=" >> "$GITHUB_OUTPUT"
-          
-      - name: Setup pnpm
-        if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
+      - name: Setup pnpm (explicit version)
+        if: inputs.packageManager == 'pnpm' && inputs.pnpmVersion != ''
         uses: pnpm/action-setup@v6
         with:
           version: ${{ inputs.pnpmVersion }}
-      
-      - name: Enable Corepack (pnpm)
-        if: env.NEEDS_NODE == 'true' && inputs.packageManager == 'pnpm'
-        run: corepack enable
-      
-      - name: Setup Node.js (no cache)
-        if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled != 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ inputs.nodeVersion }}
 
-      - name: Setup Node.js (with cache)
-        if: env.NEEDS_NODE == 'true' && steps.nodecache.outputs.enabled == 'true'
+      - name: Setup pnpm (packageManager field)
+        if: inputs.packageManager == 'pnpm' && inputs.pnpmVersion == ''
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ${{ matrix.project.path }}/package.json
+
+      - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ inputs.nodeVersion }}
+          node-version: ${{ inputs.nodeVersionFile == '' && inputs.nodeVersion || '' }}
+          node-version-file: ${{ inputs.nodeVersionFile }}
           cache: ${{ inputs.packageManager }}
-          cache-dependency-path: ${{ steps.nodecache.outputs.dep }}
+          cache-dependency-path: ${{ env.LOCKFILE }}
+
+      - name: Install Dependencies
+        working-directory: ${{ matrix.project.path }}
+        env:
+          PACKAGE_MANAGER: ${{ inputs.packageManager }}
+        run: |
+          if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Run Scripts
+        working-directory: ${{ matrix.project.path }}
+        env:
+          PROJECT: ${{ toJSON(matrix.project) }}
+          PACKAGE_MANAGER: ${{ inputs.packageManager }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r key; do
+            if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "::error::Invalid env var name in nodeProjects env: $key"
+              exit 1
+            fi
+            export "$key=$(jq -r --arg k "$key" '.env[$k]' <<<"$PROJECT")"
+          done < <(jq -r '.env // {} | keys[]' <<<"$PROJECT")
+
+          while IFS= read -r script; do
+            echo "::group::$PACKAGE_MANAGER run $script"
+            "$PACKAGE_MANAGER" run "$script"
+            echo "::endgroup::"
+          done < <(jq -r '.scripts[]' <<<"$PROJECT")
+
+  spa:
+    name: spa
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+      inputs.spaSites != '[]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Reject removed CDK execution
+        if: inputs.runCdk
+        run: |
+          echo "::error::pr-build v11 no longer runs AWS CDK. Set runCdk: false and use the dedicated CDK workflow; see the devops-templates README (v11 migration)."
+          exit 1
+
+      - name: Set Default Output Path If Not Provided
+        run: |
+          if [ -z "${{ inputs.outputPath }}" ]; then
+            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
+          else
+            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
+          fi
+
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        if: inputs.packageManager == 'pnpm'
+        uses: pnpm/action-setup@v6
+        with:
+          # spaSites keeps its v10 default; nodeProjects can read each package.json packageManager field.
+          version: ${{ inputs.pnpmVersion || '10' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.nodeVersionFile == '' && inputs.nodeVersion || '' }}
+          node-version-file: ${{ inputs.nodeVersionFile }}
 
       - name: Build JavaScript SPAs
         if: inputs.spaSites != '[]'
@@ -452,36 +552,3 @@ jobs:
               done
             fi
           done
-
-      - name: Install AWS CDK Locally
-        if: inputs.runCdk == true
-        run: npm install aws-cdk
-
-      - name: Configure AWS Credentials via OIDC
-        if: inputs.runCdk == true
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          audience: sts.amazonaws.com
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
-
-      - name: Run AWS CDK Synth (Dry Run)
-        if: inputs.runCdk == true
-        # ✅ Pass the GitHub App secrets to the CDK workflow
-        env:
-          TMD_APP_ID: ${{ secrets.TMD_APP_ID }}
-          TMD_APP_INSTALLATION_ID: ${{ secrets.TMD_APP_INSTALLATION_ID }}
-          TMD_APP_PRIVATE_KEY: ${{ secrets.TMD_APP_PRIVATE_KEY }}
-          TMD_WEBHOOK_SECRET: ${{ secrets.TMD_WEBHOOK_SECRET }}
-          TMP_APP_ID: ${{ secrets.TMP_APP_ID }}
-          TMP_APP_INSTALLATION_ID: ${{ secrets.TMP_APP_INSTALLATION_ID }}
-          TMP_APP_PRIVATE_KEY: ${{ secrets.TMP_APP_PRIVATE_KEY }}
-          TMP_WEBHOOK_SECRET: ${{ secrets.TMP_WEBHOOK_SECRET }}
-          OPENAI_APIKEY: ${{ secrets.OPENAI_APIKEY }}
-          OPENAI_ORGANIZATION: ${{ secrets.OPENAI_ORGANIZATION }}
-        run: |
-          if [ -n "${{ inputs.stackName }}" ]; then
-            npx aws-cdk synth --context stackGroup=${{ inputs.stackName }} ${{ inputs.stackName }}-dev ${{ inputs.stackName }}-prod
-          else
-            npx aws-cdk synth
-          fi

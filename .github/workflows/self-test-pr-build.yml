@@ -1,0 +1,37 @@
+name: Self-test PR Build
+# Exercises this revision of the pr-build reusable workflow against the fixtures in tests/fixtures,
+# so template changes are validated before consumers adopt a release.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/pr-build.yaml
+      - .github/workflows/self-test-pr-build.yml
+      - tests/fixtures/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet-version:
+    uses: ./.github/workflows/pr-build.yaml
+    with:
+      solution: tests/fixtures/dotnet/SelfTest.slnx
+      dotnetVersion: 11.x
+      dotnetFormat: true
+
+  global-json:
+    uses: ./.github/workflows/pr-build.yaml
+    with:
+      solution: tests/fixtures/dotnet/SelfTest.slnx
+      globalJsonFile: tests/fixtures/dotnet/global.json
+      dotnetFormat: true
+
+  pnpm-package-manager-field:
+    uses: ./.github/workflows/pr-build.yaml
+    with:
+      packageManager: pnpm
+      nodeVersion: 22.x
+      nodeProjects: >-
+        [{"name":"fixture","path":"tests/fixtures/node","scripts":["lint","test","build"],"env":{"SELF_TEST_VALUE":"expected"}}]
