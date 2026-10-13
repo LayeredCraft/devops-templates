@@ -1,0 +1,233 @@
+name: CDK Preview
+# Reusable workflow - credential-isolated CDK preview for pull requests.
+#
+# Job `deployed templates` (TRUSTED, has credentials) fetches the deployed CloudFormation templates of
+# the named stacks with a read-only role. Job `diff` (UNTRUSTED, no credentials) checks out the pull
+# request, synthesizes it, and runs `cdk diff <stack> --template <deployed>.json`. Pull request code
+# therefore never runs where AWS credentials exist.
+#
+# Security invariants (keep them when changing this file):
+# - `deployed templates` never checks out, downloads, or caches anything from the caller. Only the
+#   runner image's AWS CLI and jq and the commit-pinned actions below run while credentials exist.
+# - `diff` has no `id-token` permission and receives only the deployed templates as data.
+# - Caller inputs are validated and reach commands through environment variables or argument arrays.
+# - The role is expected to trust this workflow by `job_workflow_ref` pinned to a full commit SHA, and
+#   to allow only `cloudformation:GetTemplate` on an allowlist of stacks. IAM is the authoritative
+#   allowlist; the checks here only reject malformed input early.
+on:
+  workflow_call:
+    inputs:
+      roleArn:
+        description: "ARN of the read-only role to assume through GitHub OIDC"
+        required: true
+        type: string
+      awsRegion:
+        description: "AWS region of the stacks"
+        required: false
+        default: "us-east-1"
+        type: string
+      stacks:
+        description: >-
+          JSON array (1-20) of stacks to preview. Each entry: {"stack": "<deployed stack name>",
+          "context": {"<key>": "<value>"} (optional `cdk -c` values), "contextFromDeployed":
+          {"<key>": "<regex with a (?<value>...) group>"} (optional values read from the deployed
+          template's strings, e.g. a currently deployed image tag)}
+        required: true
+        type: string
+      cdkVersion:
+        description: "Exact aws-cdk CLI version, e.g. 2.1128.1"
+        required: true
+        type: string
+      dotnetVersion:
+        description: ".NET SDK version(s) for a C# CDK app, e.g. 11.x (leave empty with globalJsonFile, or for non-.NET apps)"
+        required: false
+        default: ""
+        type: string
+      globalJsonFile:
+        description: "Optional global.json for SDK selection"
+        required: false
+        default: ""
+        type: string
+      nodeVersion:
+        description: "Node version for the CDK CLI"
+        required: false
+        default: "lts/*"
+        type: string
+      workingDirectory:
+        description: "Directory containing cdk.json"
+        required: false
+        default: "."
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  fetch:
+    name: deployed templates
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    outputs:
+      artifactName: ${{ steps.names.outputs.artifactName }}
+
+    steps:
+      - name: Validate inputs
+        id: names
+        env:
+          ROLE_ARN: ${{ inputs.roleArn }}
+          AWS_REGION_INPUT: ${{ inputs.awsRegion }}
+          STACKS: ${{ inputs.stacks }}
+        run: |
+          set -euo pipefail
+          [[ "$ROLE_ARN" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,64}$ ]] || { echo "::error::roleArn is not an IAM role ARN."; exit 1; }
+          [[ "$AWS_REGION_INPUT" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || { echo "::error::awsRegion is not an AWS region."; exit 1; }
+          jq -e 'type == "array" and length >= 1 and length <= 20 and (map(type == "object" and (.stack | type) == "string") | all) and (map(.stack) | unique | length) == length' <<<"$STACKS" >/dev/null \
+            || { echo "::error::stacks must be a JSON array of 1-20 objects with distinct \"stack\" names."; exit 1; }
+          while IFS= read -r name; do
+            [[ "$name" =~ ^[A-Za-z][A-Za-z0-9-]{0,127}$ ]] || { echo "::error::Invalid CloudFormation stack name: $name"; exit 1; }
+          done < <(jq -r '.[].stack' <<<"$STACKS")
+          jq -r '.[].stack' <<<"$STACKS" > "$RUNNER_TEMP/stack-names.txt"
+          echo "artifactName=cdk-deployed-templates-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+
+      - name: Assume read-only role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.roleArn }}
+          aws-region: ${{ inputs.awsRegion }}
+          audience: sts.amazonaws.com
+          role-session-name: cdk-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 900
+          mask-aws-account-id: true
+
+      - name: Fetch deployed templates
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/deployed-templates"
+          mkdir -p "$out"
+          while IFS= read -r name; do
+            # Original stage: the template as submitted. GetTemplate never resolves dynamic
+            # references, Fn::GetAtt values, or NoEcho parameters.
+            if ! aws cloudformation get-template \
+              --stack-name "$name" \
+              --template-stage Original \
+              --query TemplateBody \
+              --output json > "$out/$name.raw.json"; then
+              echo "::error::Could not read the deployed template of $name."
+              exit 1
+            fi
+            # TemplateBody is a JSON object for JSON templates and a string for YAML templates.
+            if jq -e 'type == "object"' "$out/$name.raw.json" >/dev/null; then
+              jq . "$out/$name.raw.json" > "$out/$name.json"
+            else
+              echo "::error::Stack $name has a non-JSON template; only CDK-synthesized JSON templates are supported."
+              exit 1
+            fi
+            rm "$out/$name.raw.json"
+            echo "Fetched $name ($(wc -c < "$out/$name.json") bytes)"
+          done < "$RUNNER_TEMP/stack-names.txt"
+
+      - name: Upload deployed templates
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.names.outputs.artifactName }}
+          path: ${{ runner.temp }}/deployed-templates/*.json
+          if-no-files-found: error
+          retention-days: 1
+
+  diff:
+    name: diff
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate inputs
+        env:
+          STACKS: ${{ inputs.stacks }}
+          CDK_VERSION: ${{ inputs.cdkVersion }}
+        run: |
+          set -euo pipefail
+          [[ "$CDK_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::cdkVersion must be an exact version such as 2.1128.1."; exit 1; }
+          jq -e '
+            map(
+              ((.context // {}) | type == "object")
+              and ((.context // {}) | to_entries | map((.key | test("^[A-Za-z@][A-Za-z0-9@:._/-]*$")) and (.value | type == "string") and (.value | test("\n") | not)) | all)
+              and ((.contextFromDeployed // {}) | type == "object")
+              and ((.contextFromDeployed // {}) | to_entries | map((.key | test("^[A-Za-z@][A-Za-z0-9@:._/-]*$")) and (.value | type == "string") and (.value | contains("(?<value>"))) | all)
+            ) | all' <<<"$STACKS" >/dev/null \
+            || { echo "::error::Each stack's context values must be single-line strings, and each contextFromDeployed value a regex with a (?<value>...) group."; exit 1; }
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        if: inputs.dotnetVersion != '' || inputs.globalJsonFile != ''
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: ${{ inputs.dotnetVersion }}
+          global-json-file: ${{ inputs.globalJsonFile }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.nodeVersion }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.fetch.outputs.artifactName }}
+          path: ${{ runner.temp }}/deployed
+
+      - name: Diff against deployed templates (no AWS credentials)
+        working-directory: ${{ inputs.workingDirectory }}
+        env:
+          STACKS: ${{ inputs.stacks }}
+          CDK_VERSION: ${{ inputs.cdkVersion }}
+          DEPLOYED: ${{ runner.temp }}/deployed
+          JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION: "1"
+        run: |
+          set -euo pipefail
+          summary() { echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
+          summary "## CDK preview"
+          failed=0
+          count=$(jq length <<<"$STACKS")
+          for i in $(seq 0 $((count - 1))); do
+            entry=$(jq -c ".[$i]" <<<"$STACKS")
+            stack=$(jq -r '.stack' <<<"$entry")
+            deployed="$DEPLOYED/$stack.json"
+            args=()
+            while IFS=$'\t' read -r key value; do
+              [[ -n "$key" ]] && args+=(-c "$key=$value")
+            done < <(jq -r '(.context // {}) | to_entries[] | [.key, .value] | @tsv' <<<"$entry")
+            while IFS=$'\t' read -r key regex; do
+              [[ -n "$key" ]] || continue
+              value=$(jq -r --arg re "$regex" '[.. | strings | capture($re)?.value] | first // empty' "$deployed")
+              if [[ -z "$value" ]]; then
+                echo "::error::$stack: no deployed template string matched contextFromDeployed.$key."
+                failed=1
+                continue 2
+              fi
+              args+=(-c "$key=$value")
+            done < <(jq -r '(.contextFromDeployed // {}) | to_entries[] | [.key, .value] | @tsv' <<<"$entry")
+
+            echo "::group::cdk diff $stack"
+            if output=$(npx --yes "aws-cdk@$CDK_VERSION" diff "$stack" --template "$deployed" "${args[@]}" 2>&1); then
+              result=""
+            else
+              result=" (failed)"
+              failed=1
+              echo "::error::cdk diff failed for $stack"
+            fi
+            echo "$output"
+            echo "::endgroup::"
+            summary "### \`$stack\`$result"
+            summary '```'
+            summary "$(grep -vE '^\s*$|JSII|!!' <<<"$output" | tail -n 200)"
+            summary '```'
+          done
+          exit "$failed"

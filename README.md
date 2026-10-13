@@ -81,6 +81,43 @@ workflow definition; never put secrets there.
 - **Node.js validation.** Use `nodeProjects` to run lint/type-check/test/build scripts; `spaSites`
   remains for build-output packaging.
 
+## CDK Preview (`cdk-preview.yaml`)
+
+A credential-isolated CDK diff for pull requests, in two jobs:
+
+- `deployed templates` (credentials): assumes a read-only role through GitHub OIDC and downloads the
+  deployed CloudFormation templates of the named stacks (`GetTemplate`, original stage). It never
+  checks out, downloads, or runs anything from the caller.
+- `diff` (no credentials): checks out the pull request and runs
+  `cdk diff <stack> --template <deployed>.json`, writing each result to the job summary.
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  cdk-preview:
+    uses: LayeredCraft/devops-templates/.github/workflows/cdk-preview.yaml@<commit SHA>
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      roleArn: arn:aws:iam::123456789012:role/my-cdk-preview
+      cdkVersion: 2.1128.1
+      dotnetVersion: 11.x
+      stacks: >-
+        [{"stack":"my-app-dev","context":{"env":"dev"}},
+         {"stack":"my-app-web","contextFromDeployed":{"imageTag":":web-(?<value>[0-9a-f]+)$"}}]
+```
+
+Each `stacks` entry names a deployed stack, optional `context` (`cdk -c key=value`), and optional
+`contextFromDeployed` (a regex with a `(?<value>...)` group matched against the deployed template's
+strings, e.g. to keep the currently deployed image tag so only infrastructure changes show).
+
+Reference it by **commit SHA**: the role should trust exactly this workflow revision through the
+`job_workflow_ref` claim (plus `aud`, `sub`, and `repository_id`) and allow only
+`cloudformation:GetTemplate` on the listed stacks. IAM is the authoritative stack allowlist.
+
 ## Draft Pull Requests
 
 Draft pull requests run only lightweight feedback workflows. `pr-title-check.yml` can still run on draft PRs, but workflows that build, deploy, publish packages, tag commits, or update release metadata skip draft PRs.
