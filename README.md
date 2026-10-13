@@ -27,6 +27,60 @@ jobs:
       runCdk: true
 ```
 
+## PR Build (`pr-build.yaml`, v11)
+
+`pr-build.yaml` validates pull requests without any cloud credentials. Every job runs with
+`contents: read` only and never requests an OIDC token, so callers grant just:
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: LayeredCraft/devops-templates/.github/workflows/pr-build.yaml@<v11 commit SHA> # v11.x
+    with:
+      solution: MyApp.slnx
+      dotnetVersion: 11.x          # or globalJsonFile: global.json
+      dotnetFormat: true
+      hasTests: true
+      packageManager: pnpm         # pnpmVersion omitted: read from each package.json packageManager
+      nodeVersion: 22.x
+      nodeProjects: >-
+        [{"name":"web","path":"app","scripts":["lint","typecheck","test","build"]}]
+```
+
+Jobs, and therefore check names (`<caller job> / <job>`):
+
+| Job | Runs when | What it does |
+|---|---|---|
+| `dotnet` | `solution`, `webPath`, `hasTests`, or `functions` is set | setup-dotnet → restore → optional `dotnet format --verify-no-changes` → build → optional tests/coverage → optional Blazor/Lambda packaging |
+| `node (<name>)` | `nodeProjects` is not `[]` | One job per project: install with the lockfile (`pnpm install --frozen-lockfile` or `npm ci`), then each listed `package.json` script in order |
+| `spa` | `spaSites` is not `[]` | The existing SPA install/build behavior (pnpm defaults to `10` here unless `pnpmVersion` is set) |
+
+SDK selection: `dotnetVersion` accepts any actions/setup-dotnet version spec, such as `11.x` or a
+multi-line list. `globalJsonFile` points setup-dotnet at a `global.json`; when both are empty,
+setup-dotnet looks for a repository-root `global.json`. setup-dotnet installs a prerelease
+`sdk.version` exactly (it applies `rollForward` only to release versions), so repositories pinned
+to a prerelease SDK should prefer a channel such as `11.x` and let their own `global.json`
+roll-forward policy accept it.
+
+`nodeProjects[].env` values are exported only for that project's scripts and are written to the
+workflow definition; never put secrets there.
+
+### Migrating from v10
+
+- **CDK moved out.** `runCdk` now defaults to `false`; `runCdk: true` fails with a migration
+  message. The hard-coded deployment role and the application-specific `TMD_*`, `TMP_*`, and
+  `OPENAI_*` secrets are gone from this workflow. Run CDK through the dedicated CDK workflow.
+  `stackName` is accepted but ignored so existing callers do not fail on an unexpected input.
+- **Permissions.** Callers no longer need `id-token: write` or `contents: write` for PR builds.
+- **Defaults.** `dotnetVersion` no longer defaults to `9.0.x`, `nodeVersion` defaults to `lts/*`
+  (was `18.x`), and `pnpmVersion` defaults to the `packageManager` field (was `10`). Pass explicit
+  values to keep previous behavior.
+- **Node.js validation.** Use `nodeProjects` to run lint/type-check/test/build scripts; `spaSites`
+  remains for build-output packaging.
+
 ## Draft Pull Requests
 
 Draft pull requests run only lightweight feedback workflows. `pr-title-check.yml` can still run on draft PRs, but workflows that build, deploy, publish packages, tag commits, or update release metadata skip draft PRs.

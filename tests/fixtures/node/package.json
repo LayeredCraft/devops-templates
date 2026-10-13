@@ -1,0 +1,10 @@
+{
+  "name": "devops-templates-node-self-test",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "lint": "node -e \"console.log('lint ok')\"",
+    "test": "node -e \"if (process.env.SELF_TEST_VALUE !== 'expected') { console.error('nodeProjects env was not applied'); process.exit(1); } console.log('test ok')\"",
+    "build": "node -e \"console.log('build ok')\""
+  }
+}
