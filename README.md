@@ -80,37 +80,39 @@ workflow definition; never put secrets there.
   values to keep previous behavior.
 - **Node.js validation.** Use `nodeProjects` to run lint/type-check/test/build scripts; `spaSites`
   remains for build-output packaging.
-## CDK Deployed Templates (`cdk-deployed-templates.yaml`)
 
-The trusted half of a credential-isolated CDK preview. It assumes a read-only role through GitHub
-OIDC, downloads the deployed CloudFormation templates of the named stacks (`GetTemplate`, original
-stage), and uploads them as an artifact. It never checks out, downloads, or runs anything from the
-caller, so pull request code never runs where credentials exist. A separate job without
-credentials synthesizes the pull request and compares with `cdk diff <stack> --template <file>`.
+## CDK Preview (`cdk-preview.yaml`)
+
+A credential-isolated CDK diff for pull requests, in two jobs:
+
+- `deployed templates` (credentials): assumes a read-only role through GitHub OIDC and downloads the
+  deployed CloudFormation templates of the named stacks (`GetTemplate`, original stage). It never
+  checks out, downloads, or runs anything from the caller.
+- `diff` (no credentials): checks out the pull request and runs
+  `cdk diff <stack> --template <deployed>.json`, writing each result to the job summary.
 
 ```yaml
+permissions:
+  contents: read
+
 jobs:
-  deployed-templates:
-    uses: LayeredCraft/devops-templates/.github/workflows/cdk-deployed-templates.yaml@<commit SHA>
+  cdk-preview:
+    uses: LayeredCraft/devops-templates/.github/workflows/cdk-preview.yaml@<commit SHA>
     permissions:
       id-token: write
+      contents: read
     with:
       roleArn: arn:aws:iam::123456789012:role/my-cdk-preview
-      stackNames: '["my-app-dev","my-app-dns"]'
-
-  cdk-diff:
-    needs: deployed-templates
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@<SHA>
-      - uses: actions/download-artifact@<SHA>
-        with:
-          name: ${{ needs.deployed-templates.outputs.artifactName }}
-          path: deployed
-      - run: npx aws-cdk@<version> diff my-app-dev --template deployed/my-app-dev.json
+      cdkVersion: 2.1128.1
+      dotnetVersion: 11.x
+      stacks: >-
+        [{"stack":"my-app-dev","context":{"env":"dev"}},
+         {"stack":"my-app-web","contextFromDeployed":{"imageTag":":web-(?<value>[0-9a-f]+)$"}}]
 ```
+
+Each `stacks` entry names a deployed stack, optional `context` (`cdk -c key=value`), and optional
+`contextFromDeployed` (a regex with a `(?<value>...)` group matched against the deployed template's
+strings, e.g. to keep the currently deployed image tag so only infrastructure changes show).
 
 Reference it by **commit SHA**: the role should trust exactly this workflow revision through the
 `job_workflow_ref` claim (plus `aud`, `sub`, and `repository_id`) and allow only
