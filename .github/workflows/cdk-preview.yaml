@@ -206,7 +206,7 @@ jobs:
             done < <(jq -r '(.context // {}) | to_entries[] | [.key, .value] | @tsv' <<<"$entry")
             while IFS=$'\t' read -r key regex; do
               [[ -n "$key" ]] || continue
-              value=$(jq -r --arg re "$regex" '[.. | strings | capture($re)?.value] | first // empty' "$deployed")
+              value=$(jq -r --arg re "$regex" 'first(.. | strings | capture($re)? | .value) // empty' "$deployed")
               if [[ -z "$value" ]]; then
                 echo "::error::$stack: no deployed template string matched contextFromDeployed.$key."
                 failed=1
