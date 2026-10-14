@@ -1,0 +1,123 @@
+name: Self-test Build Deploy
+# Validates this revision of build-deploy's deployment-role resolution and the MSBuild environment
+# guard without AWS credentials. build-deploy itself is not run here: it deploys and pushes tags.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/**
+      - .github/actions/**
+      - .github/scripts/check-msbuild-env.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  msbuild-env:
+    name: msbuild env guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml==6.0.2
+      - name: No workflow exports an MSBuild output-path property
+        run: python3 .github/scripts/check-msbuild-env.py .
+
+  aws-role:
+    name: aws role (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - name: development uses roleArn
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: arn:aws:iam::222222222222:role/prod-deploy
+            awsRegion: us-east-1
+            expect: success
+            expectRole: arn:aws:iam::111111111111:role/dev-deploy
+            expectEnvironment: development
+          - name: development without productionRoleArn
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: ""
+            awsRegion: eu-west-2
+            expect: success
+            expectRole: arn:aws:iam::111111111111:role/dev-deploy
+            expectEnvironment: development
+          - name: production uses productionRoleArn
+            ref: refs/tags/v1.2.3
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: arn:aws:iam::222222222222:role/prod-deploy
+            awsRegion: us-east-1
+            expect: success
+            expectRole: arn:aws:iam::222222222222:role/prod-deploy
+            expectEnvironment: production
+          - name: production never falls back to roleArn
+            ref: refs/tags/v1.2.3
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: failure
+          - name: missing roleArn
+            ref: refs/heads/main
+            roleArn: ""
+            productionRoleArn: arn:aws:iam::222222222222:role/prod-deploy
+            awsRegion: us-east-1
+            expect: failure
+          - name: malformed roleArn
+            ref: refs/heads/main
+            roleArn: "arn:aws:iam::1111:role/dev; curl evil"
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: failure
+          - name: malformed productionRoleArn
+            ref: refs/tags/v1.2.3
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: arn:aws:iam::222222222222:user/prod-deploy
+            awsRegion: us-east-1
+            expect: failure
+          - name: malformed region
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/dev-deploy
+            productionRoleArn: ""
+            awsRegion: "us-east-1 && id"
+            expect: failure
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve
+        id: resolve
+        continue-on-error: true
+        uses: ./.github/actions/resolve-aws-deploy-role
+        with:
+          roleArn: ${{ matrix.case.roleArn }}
+          productionRoleArn: ${{ matrix.case.productionRoleArn }}
+          awsRegion: ${{ matrix.case.awsRegion }}
+          ref: ${{ matrix.case.ref }}
+
+      - name: Assert
+        env:
+          OUTCOME: ${{ steps.resolve.outcome }}
+          EXPECT: ${{ matrix.case.expect }}
+          ROLE: ${{ steps.resolve.outputs.role-arn }}
+          ENVIRONMENT: ${{ steps.resolve.outputs.environment }}
+          EXPECT_ROLE: ${{ matrix.case.expectRole }}
+          EXPECT_ENVIRONMENT: ${{ matrix.case.expectEnvironment }}
+        run: |
+          set -euo pipefail
+          echo "outcome=$OUTCOME role=${ROLE:-<none>} environment=${ENVIRONMENT:-<none>}"
+          [[ "$OUTCOME" == "$EXPECT" ]] || { echo "::error::Expected $EXPECT, got $OUTCOME."; exit 1; }
+          if [[ "$EXPECT" == success ]]; then
+            [[ "$ROLE" == "$EXPECT_ROLE" ]] || { echo "::error::Expected role $EXPECT_ROLE, got $ROLE."; exit 1; }
+            [[ "$ENVIRONMENT" == "$EXPECT_ENVIRONMENT" ]] || { echo "::error::Expected $EXPECT_ENVIRONMENT, got $ENVIRONMENT."; exit 1; }
+          else
+            [[ -z "$ROLE" ]] || { echo "::error::A failed resolution must not output a role."; exit 1; }
+          fi
