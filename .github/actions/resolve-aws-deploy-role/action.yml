@@ -37,7 +37,20 @@ runs:
         RUN_REF: ${{ inputs.ref }}
       run: |
         set -euo pipefail
-        role_pattern='^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,64}$'
+        # IAM role ARN: arn:<partition>:iam::<account>:role/<optional path segments/><name>. The path
+        # (with its leading and trailing slash) is at most 512 printable non-space ASCII characters;
+        # the name is 1-64 characters of [A-Za-z0-9+=,.@_-].
+        is_role_arn() {
+          local LC_ALL=C rest name path
+          [[ "$1" =~ ^arn:aws(-cn|-us-gov)?:iam::[0-9]{12}:role/(.+)$ ]] || return 1
+          rest="${BASH_REMATCH[2]}"
+          name="${rest##*/}"
+          path="/"
+          [[ "$rest" == */* ]] && path="/${rest%/*}/"
+          [[ "$name" =~ ^[A-Za-z0-9+=,.@_-]{1,64}$ ]] || return 1
+          (( ${#path} <= 512 )) || return 1
+          [[ "$path" =~ ^[[:graph:]]+$ ]]
+        }
 
         [[ "$AWS_REGION_INPUT" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] \
           || { echo "::error::awsRegion '$AWS_REGION_INPUT' is not an AWS region (for example us-east-1)."; exit 1; }
@@ -60,8 +73,8 @@ runs:
           fi
         fi
 
-        [[ "$selected" =~ $role_pattern ]] \
-          || { echo "::error::$input is not an IAM role ARN (arn:aws:iam::<12-digit account>:role/<name>)."; exit 1; }
+        is_role_arn "$selected" \
+          || { echo "::error::$input is not an IAM role ARN (arn:aws:iam::<12-digit account>:role/[<path>/]<name>)."; exit 1; }
 
         echo "Deploying $environment with the role from $input."
         echo "role-arn=$selected" >> "$GITHUB_OUTPUT"

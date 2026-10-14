@@ -83,7 +83,21 @@ jobs:
           STACKS: ${{ inputs.stacks }}
         run: |
           set -euo pipefail
-          [[ "$ROLE_ARN" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,64}$ ]] || { echo "::error::roleArn is not an IAM role ARN."; exit 1; }
+          # IAM role ARN: arn:<partition>:iam::<account>:role/<optional path segments/><name>. The path
+          # (with its leading and trailing slash) is at most 512 printable non-space ASCII characters;
+          # the name is 1-64 characters of [A-Za-z0-9+=,.@_-].
+          is_role_arn() {
+            local LC_ALL=C rest name path
+            [[ "$1" =~ ^arn:aws(-cn|-us-gov)?:iam::[0-9]{12}:role/(.+)$ ]] || return 1
+            rest="${BASH_REMATCH[2]}"
+            name="${rest##*/}"
+            path="/"
+            [[ "$rest" == */* ]] && path="/${rest%/*}/"
+            [[ "$name" =~ ^[A-Za-z0-9+=,.@_-]{1,64}$ ]] || return 1
+            (( ${#path} <= 512 )) || return 1
+            [[ "$path" =~ ^[[:graph:]]+$ ]]
+          }
+          is_role_arn "$ROLE_ARN" || { echo "::error::roleArn is not an IAM role ARN (arn:aws:iam::<12-digit account>:role/[<path>/]<name>)."; exit 1; }
           [[ "$AWS_REGION_INPUT" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || { echo "::error::awsRegion is not an AWS region."; exit 1; }
           jq -e 'type == "array" and length >= 1 and length <= 20 and (map(type == "object" and (.stack | type) == "string") | all) and (map(.stack) | unique | length) == length' <<<"$STACKS" >/dev/null \
             || { echo "::error::stacks must be a JSON array of 1-20 objects with distinct \"stack\" names."; exit 1; }

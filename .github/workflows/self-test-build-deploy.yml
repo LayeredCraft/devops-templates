@@ -81,6 +81,40 @@ jobs:
             productionRoleArn: arn:aws:iam::222222222222:user/prod-deploy
             awsRegion: us-east-1
             expect: failure
+          - name: role with a path
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/platform/ci/dev-deploy
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: success
+            expectRole: arn:aws:iam::111111111111:role/platform/ci/dev-deploy
+            expectEnvironment: development
+          - name: long path with a 64-character name
+            ref: refs/tags/v1.2.3
+            roleArn: ""
+            productionRoleArn: arn:aws-us-gov:iam::222222222222:role/division-1/division-2/division-3/division-4/division-5/division-6/division-7/division-8/team_a+b=c,d.e@f/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+            awsRegion: us-gov-west-1
+            expect: success
+            expectRole: arn:aws-us-gov:iam::222222222222:role/division-1/division-2/division-3/division-4/division-5/division-6/division-7/division-8/team_a+b=c,d.e@f/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+            expectEnvironment: production
+          - name: role name over 64 characters
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/ci/ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddx
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: failure
+          - name: space in role path
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/ci team/dev-deploy
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: failure
+          - name: path over 512 characters
+            ref: refs/heads/main
+            roleArn: arn:aws:iam::111111111111:role/ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp/dev-deploy
+            productionRoleArn: ""
+            awsRegion: us-east-1
+            expect: failure
           - name: malformed region
             ref: refs/heads/main
             roleArn: arn:aws:iam::111111111111:role/dev-deploy

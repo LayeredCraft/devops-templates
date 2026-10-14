@@ -145,7 +145,9 @@ hard-code an account.
   production.
 - **Validation happens first.** The ARNs and region are checked before anything is built and before
   any credentials are requested. Missing or malformed values fail with an error that names the input
-  to fix.
+  to fix. Role ARNs follow IAM's rules: the `aws`, `aws-cn`, or `aws-us-gov` partition, an optional
+  role path of up to 512 characters, and a role name of up to 64 characters. `cdk-preview.yaml`
+  applies the same check to its `roleArn`.
 - **Trust stays in IAM.** The template does not change any IAM role, trust policy, or permission.
   Recommended trust for deployment roles: exact `aud` (`sts.amazonaws.com`), the immutable
   `repository_id`, and a `sub` limited to `ref:refs/heads/main` (development) or tag refs / a
