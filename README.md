@@ -70,6 +70,24 @@ roll-forward policy accept it.
 `nodeProjects[].env` values are exported only for that project's scripts and are written to the
 workflow definition; never put secrets there.
 
+### Test results and timings
+
+Set `testResultsArtifact: true` (with `hasTests: true` and `enableCodeCoverage: false`) to have the
+`dotnet` job write a per-project results/timings table to the job summary and upload a
+`test-results` artifact (TRX, 30-day retention). TRX is written with `--report-xunit-trx` when
+`useMtpRunner: true` and with `--logger trx` otherwise, so the feature works with either runner and
+never weakens the test gate.
+
+The table is derived from each module's TRX `Counters` and `Times`, so it reports authoritative
+totals (skipped = `notExecuted` + `notRunnable`) rather than a stream summary:
+
+| Project | Total | Passed | Failed | Skipped | Duration |
+|---|---:|---:|---:|---:|---:|
+
+Use the summary and artifact to attribute CI wall-clock time to individual test projects before
+changing test infrastructure. Note that MTP (`useMtpRunner: true`) is selected by the caller's
+`global.json` (`"test": { "runner": "Microsoft.Testing.Platform" }`), not by this workflow.
+
 ### Migrating from v10
 
 - **CDK moved out.** `runCdk` now defaults to `false`; `runCdk: true` fails with a migration

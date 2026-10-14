@@ -35,3 +35,12 @@ jobs:
       nodeVersion: 22.x
       nodeProjects: >-
         [{"name":"fixture","path":"tests/fixtures/node","scripts":["lint","test","build"],"env":{"SELF_TEST_VALUE":"expected"}}]
+
+  test-results-artifact:
+    uses: ./.github/workflows/pr-build.yaml
+    with:
+      solution: tests/fixtures/dotnet-tests/SelfTest.Tests.slnx
+      dotnetVersion: 11.x
+      hasTests: true
+      useMtpRunner: true
+      testResultsArtifact: true
