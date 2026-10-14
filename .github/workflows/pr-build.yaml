@@ -144,11 +144,13 @@ jobs:
           exit 1
 
       - name: Set Default Output Path If Not Provided
+        # Not named outputPath: MSBuild reads environment variables as properties, and an `outputPath`
+        # variable would redirect every project's OutputPath into this one folder.
         run: |
           if [ -z "${{ inputs.outputPath }}" ]; then
-            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace }}/publish" >> $GITHUB_ENV
           else
-            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
 
       - name: Validate .NET Inputs
@@ -252,7 +254,7 @@ jobs:
 
       - name: Build and Publish Blazor WebAssembly
         if: inputs.webPath != ''
-        run: dotnet publish ${{ inputs.webPath }} --configuration "${{ inputs.buildConfiguration }}" --no-restore --output ${{ env.outputPath }}
+        run: dotnet publish ${{ inputs.webPath }} --configuration "${{ inputs.buildConfiguration }}" --no-restore --output ${{ env.TEMPLATE_OUTPUT_PATH }}
 
       - name: Detect Lambda custom build images
         id: lambda-custom-container
@@ -278,7 +280,7 @@ jobs:
           functions: ${{ inputs.functions }}
           configuration: ${{ inputs.buildConfiguration }}
           lambdaRuntimeVersion: ${{ inputs.lambdaRuntimeVersion }}
-          outputPath: ${{ env.outputPath }}
+          outputPath: ${{ env.TEMPLATE_OUTPUT_PATH }}
 
       # Functions whose own aws-lambda-tools-defaults.json declares `container-image-for-build` were
       # already built and packaged by the step above, from an isolated checkout copy - see that
@@ -297,7 +299,7 @@ jobs:
               echo "Skipping $NAME - already packaged by the Native AOT isolated-build step"
               continue
             fi
-            ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
+            ZIP_PATH="${{ env.TEMPLATE_OUTPUT_PATH }}/${NAME}.zip"
             dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration "${{ inputs.buildConfiguration }}" --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           done
 
@@ -414,11 +416,13 @@ jobs:
           exit 1
 
       - name: Set Default Output Path If Not Provided
+        # Not named outputPath: MSBuild reads environment variables as properties, and an `outputPath`
+        # variable would redirect every project's OutputPath into this one folder.
         run: |
           if [ -z "${{ inputs.outputPath }}" ]; then
-            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace }}/publish" >> $GITHUB_ENV
           else
-            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
 
       - name: Checkout Repository
@@ -534,7 +538,7 @@ jobs:
               exit 1
             fi
 
-            SITE_OUT="${{ env.outputPath }}/$OUTPUT_SUBDIR"
+            SITE_OUT="${{ env.TEMPLATE_OUTPUT_PATH }}/$OUTPUT_SUBDIR"
             rm -rf "$SITE_OUT"
             mkdir -p "$SITE_OUT"
             cp -a "$BUILD_OUT/." "$SITE_OUT/"
