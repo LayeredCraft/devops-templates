@@ -195,7 +195,7 @@ jobs:
 
           RESULTS_ARGS=()
           if [ "${{ inputs.testResultsArtifact }}" = "true" ]; then
-            RESULTS_ARGS+=(--results-directory "${{ github.workspace }}/.test-results")
+            RESULTS_ARGS+=(--results-directory "${{ github.workspace }}/test-results")
             if [ "${{ inputs.useMtpRunner }}" = "true" ]; then
               RESULTS_ARGS+=(--report-xunit-trx)
             else
@@ -208,7 +208,7 @@ jobs:
       - name: Summarize Test Results
         if: always() && inputs.hasTests == true && inputs.enableCodeCoverage == false && inputs.testResultsArtifact == true
         run: |
-          RESULTS_DIR="${{ github.workspace }}/.test-results"
+          RESULTS_DIR="${{ github.workspace }}/test-results"
           if [ -z "$(find "$RESULTS_DIR" -name '*.trx' -print -quit 2>/dev/null)" ]; then
             echo "No TRX test result files were produced in $RESULTS_DIR."
             exit 0
@@ -280,7 +280,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: ${{ github.workspace }}/.test-results/**/*
+          path: ${{ github.workspace }}/test-results/**/*
           if-no-files-found: ignore
           retention-days: 30
 
