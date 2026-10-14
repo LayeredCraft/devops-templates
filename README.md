@@ -18,13 +18,15 @@ on:
 
 jobs:
   build-deploy:
-    uses: your-org/devops-templates/.github/workflows/build-deploy.yaml@main
+    uses: LayeredCraft/devops-templates/.github/workflows/build-deploy.yaml@<version>
     with:
-      nodeVersion: '18.x'
-      dotnetVersion: '9.0.x'
+      nodeVersion: '22.x'
+      dotnetVersion: '10.0.x'
       outputPath: 'publish'
       hasTests: true
       runCdk: true
+      roleArn: arn:aws:iam::123456789012:role/my-app-dev-deploy
+      productionRoleArn: arn:aws:iam::123456789012:role/my-app-prod-deploy
 ```
 
 ## PR Build (`pr-build.yaml`, v11)
@@ -80,6 +82,9 @@ workflow definition; never put secrets there.
   values to keep previous behavior.
 - **Node.js validation.** Use `nodeProjects` to run lint/type-check/test/build scripts; `spaSites`
   remains for build-output packaging.
+- **`build-deploy.yaml`.** From v11.1, CDK deployments take `roleArn` / `productionRoleArn` /
+  `awsRegion` instead of the hard-coded role, and projects keep their own build output folders. See
+  [Build and Deploy](#build-and-deploy-build-deployyaml).
 
 ## CDK Preview (`cdk-preview.yaml`)
 
@@ -117,6 +122,73 @@ strings, e.g. to keep the currently deployed image tag so only infrastructure ch
 Reference it by **commit SHA**: the role should trust exactly this workflow revision through the
 `job_workflow_ref` claim (plus `aud`, `sub`, and `repository_id`) and allow only
 `cloudformation:GetTemplate` on the listed stacks. IAM is the authoritative stack allowlist.
+
+## Build and Deploy (`build-deploy.yaml`)
+
+Builds, tests, and packages the application, then (with `runCdk: true`) deploys the CDK stack:
+`<stackName>-dev` on non-tag runs and `<stackName>-prod` on tag runs.
+
+### AWS deployment roles
+
+The workflow assumes a role through GitHub OIDC. The caller chooses the role; the template does not
+hard-code an account.
+
+| Input | Required | Used for |
+|---|---|---|
+| `roleArn` | when `runCdk: true` and the run is not a tag | development deployments (`<stackName>-dev`) and the post-deploy integration tests |
+| `productionRoleArn` | when `runCdk: true` and the run is a tag | production deployments (`<stackName>-prod`) |
+| `awsRegion` | no (default `us-east-1`) | the deployment region |
+
+- **Role selection.** A run whose `github.ref` is `refs/tags/*` deploys production and assumes
+  `productionRoleArn`. Every other run deploys development and assumes `roleArn`.
+- **No fallback.** A tag run without `productionRoleArn` fails; it never uses `roleArn` for
+  production.
+- **Validation happens first.** The ARNs and region are checked before anything is built and before
+  any credentials are requested. Missing or malformed values fail with an error that names the input
+  to fix. Role ARNs follow IAM's rules: the `aws`, `aws-cn`, or `aws-us-gov` partition, an optional
+  role path of up to 512 characters, and a role name of up to 64 characters. `cdk-preview.yaml`
+  applies the same check to its `roleArn`.
+- **Trust stays in IAM.** The template does not change any IAM role, trust policy, or permission.
+  Recommended trust for deployment roles: exact `aud` (`sts.amazonaws.com`), the immutable
+  `repository_id`, and a `sub` limited to `ref:refs/heads/main` (development) or tag refs / a
+  protected `environment` (production). Never trust `pull_request`. Do not pin `job_workflow_ref`,
+  so template updates never require IAM changes.
+- **Integration tests use the development role.** `integrationTestSolution` runs after a development
+  deployment with the `roleArn` credentials (never on tag runs). Running them with a narrower role is
+  tracked in #47.
+
+### Output folder
+
+Publish and package steps (Blazor, Lambda ZIPs, SPAs) write to `outputPath` (default `publish`). The
+folder is exposed to steps as `TEMPLATE_OUTPUT_PATH`, never `outputPath`, because MSBuild reads
+environment variables as properties and an `outputPath` variable would redirect every project's build
+output into one folder (#45). Projects build to their normal `bin/<Configuration>/<TFM>`.
+`.github/scripts/check-msbuild-env.py` (run by the self-test) fails if any workflow reintroduces such a
+variable.
+
+### Migrating from v10 (part of the v11 migration)
+
+Configurable deployment roles are part of the v11 migration and ship in **v11.1**. v11.0 left
+`build-deploy.yaml` unchanged from v10, so when moving `build-deploy` from v10 to v11, use v11.1 or
+later. Callers pinned to v10.x tags are unaffected until they change their reference.
+
+v10 always assumed `arn:aws:iam::403542860824:role/github-deploy-role` in `us-east-1` for both
+environments. From v11.1, callers that use `runCdk: true` pass their roles. To keep exactly the v10
+behavior, pass the same role for both:
+
+```yaml
+    uses: LayeredCraft/devops-templates/.github/workflows/build-deploy.yaml@v11.1
+    with:
+      runCdk: true
+      roleArn: arn:aws:iam::403542860824:role/github-deploy-role
+      productionRoleArn: arn:aws:iam::403542860824:role/github-deploy-role
+      awsRegion: us-east-1
+```
+
+Prefer separate, narrowly trusted development and production roles when you can. Callers with
+`runCdk: false` need no change. If a required role is missing, the run stops at its first step with
+an error naming the input. A tag run without `productionRoleArn` is refused; it never deploys
+production with `roleArn`.
 
 ## Draft Pull Requests
 

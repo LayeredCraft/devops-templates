@@ -1,0 +1,81 @@
+name: Resolve AWS Deployment Role
+description: >
+  Validates the deployment role and region inputs and selects the role for this run, before any
+  AWS credentials are requested. Tag runs deploy production and require productionRoleArn; all other
+  runs deploy development and use roleArn. There is no fallback between the two.
+inputs:
+  roleArn:
+    description: Development deployment role ARN (non-tag runs).
+    required: false
+    default: ""
+  productionRoleArn:
+    description: Production deployment role ARN (tag runs).
+    required: false
+    default: ""
+  awsRegion:
+    description: AWS region.
+    required: true
+  ref:
+    description: The run's git ref (github.ref); refs/tags/* selects production.
+    required: true
+outputs:
+  role-arn:
+    description: The role ARN to assume.
+    value: ${{ steps.resolve.outputs.role-arn }}
+  environment:
+    description: "`production` for tag runs, otherwise `development`."
+    value: ${{ steps.resolve.outputs.environment }}
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        ROLE_ARN: ${{ inputs.roleArn }}
+        PRODUCTION_ROLE_ARN: ${{ inputs.productionRoleArn }}
+        AWS_REGION_INPUT: ${{ inputs.awsRegion }}
+        RUN_REF: ${{ inputs.ref }}
+      run: |
+        set -euo pipefail
+        # IAM role ARN: arn:<partition>:iam::<account>:role/<optional path segments/><name>. The path
+        # (with its leading and trailing slash) is at most 512 printable non-space ASCII characters;
+        # the name is 1-64 characters of [A-Za-z0-9+=,.@_-].
+        is_role_arn() {
+          local LC_ALL=C rest name path
+          [[ "$1" =~ ^arn:aws(-cn|-us-gov)?:iam::[0-9]{12}:role/(.+)$ ]] || return 1
+          rest="${BASH_REMATCH[2]}"
+          name="${rest##*/}"
+          path="/"
+          [[ "$rest" == */* ]] && path="/${rest%/*}/"
+          [[ "$name" =~ ^[A-Za-z0-9+=,.@_-]{1,64}$ ]] || return 1
+          (( ${#path} <= 512 )) || return 1
+          [[ "$path" =~ ^[[:graph:]]+$ ]]
+        }
+
+        [[ "$AWS_REGION_INPUT" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] \
+          || { echo "::error::awsRegion '$AWS_REGION_INPUT' is not an AWS region (for example us-east-1)."; exit 1; }
+
+        if [[ "$RUN_REF" == refs/tags/* ]]; then
+          environment=production
+          input=productionRoleArn
+          selected="$PRODUCTION_ROLE_ARN"
+          if [[ -z "$selected" ]]; then
+            echo "::error::This tag run deploys production, but productionRoleArn is not set. build-deploy never falls back to roleArn for production. Set productionRoleArn (to keep the previous single-role behavior, pass the same ARN as roleArn)."
+            exit 1
+          fi
+        else
+          environment=development
+          input=roleArn
+          selected="$ROLE_ARN"
+          if [[ -z "$selected" ]]; then
+            echo "::error::runCdk is true, but roleArn is not set. Set roleArn to the development deployment role, or set runCdk: false."
+            exit 1
+          fi
+        fi
+
+        is_role_arn "$selected" \
+          || { echo "::error::$input is not an IAM role ARN (arn:aws:iam::<12-digit account>:role/[<path>/]<name>)."; exit 1; }
+
+        echo "Deploying $environment with the role from $input."
+        echo "role-arn=$selected" >> "$GITHUB_OUTPUT"
+        echo "environment=$environment" >> "$GITHUB_OUTPUT"

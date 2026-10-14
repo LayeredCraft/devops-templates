@@ -81,6 +81,21 @@ on:
         description: "Name of the AWS CDK stack"
         required: false
         type: string
+      roleArn:
+        description: "IAM role ARN assumed through GitHub OIDC for development (non-tag) CDK deployments. Required when runCdk is true."
+        required: false
+        default: ""
+        type: string
+      productionRoleArn:
+        description: "IAM role ARN assumed through GitHub OIDC for production (tag) CDK deployments. Required for tag runs when runCdk is true; there is no fallback to roleArn."
+        required: false
+        default: ""
+        type: string
+      awsRegion:
+        description: "AWS region for CDK deployments"
+        required: false
+        default: "us-east-1"
+        type: string
       functions:
         description: "JSON array of Lambda functions to build"
         required: false
@@ -100,15 +115,28 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ inputs.lambdaRuntimeVersion == 'net11.0' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     env:
-      outputPath: ${{ github.workspace }}/${{ inputs.outputPath }}
+      # Not named outputPath: MSBuild reads environment variables as properties, and an `outputPath`
+      # variable would redirect every project's OutputPath into this one folder (#45).
+      TEMPLATE_OUTPUT_PATH: ${{ github.workspace }}/${{ inputs.outputPath }}
 
     steps:
+      # Validate the deployment role before building anything, and before requesting credentials.
+      - name: Resolve AWS deployment role
+        id: aws-role
+        if: inputs.runCdk == true
+        uses: $/.github/actions/resolve-aws-deploy-role
+        with:
+          roleArn: ${{ inputs.roleArn }}
+          productionRoleArn: ${{ inputs.productionRoleArn }}
+          awsRegion: ${{ inputs.awsRegion }}
+          ref: ${{ github.ref }}
+
       - name: Set Default Output Path If Not Provided
         run: |
           if [ -z "${{ inputs.outputPath }}" ]; then
-            echo "outputPath=${{ github.workspace }}/publish" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace }}/publish" >> $GITHUB_ENV
           else
-            echo "outputPath=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
+            echo "TEMPLATE_OUTPUT_PATH=${{ github.workspace}}/${{ inputs.outputPath }}" >> $GITHUB_ENV
           fi
 
       - name: Compute Build Flags
@@ -171,7 +199,7 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             WASM_ENV="Production"
           fi
-          dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.outputPath }} -p:WasmApplicationEnvironmentName=$WASM_ENV
+          dotnet publish ${{ inputs.webPath }} --configuration ${{ inputs.buildConfiguration }} --no-restore --output ${{ env.TEMPLATE_OUTPUT_PATH }} -p:WasmApplicationEnvironmentName=$WASM_ENV
 
       - name: Detect Lambda custom build images
         id: lambda-custom-container
@@ -197,7 +225,7 @@ jobs:
           functions: ${{ inputs.functions }}
           configuration: ${{ inputs.buildConfiguration }}
           lambdaRuntimeVersion: ${{ inputs.lambdaRuntimeVersion }}
-          outputPath: ${{ env.outputPath }}
+          outputPath: ${{ env.TEMPLATE_OUTPUT_PATH }}
 
       # Functions whose own aws-lambda-tools-defaults.json declares `container-image-for-build` were
       # already built and packaged by the step above, from an isolated checkout copy - see that
@@ -216,7 +244,7 @@ jobs:
               echo "Skipping $NAME - already packaged by the Native AOT isolated-build step"
               continue
             fi
-            ZIP_PATH="${{ env.outputPath }}/${NAME}.zip"
+            ZIP_PATH="${{ env.TEMPLATE_OUTPUT_PATH }}/${NAME}.zip"
             dotnet tool run dotnet-lambda package -pl "$FUNC_PATH" --configuration ${{ inputs.buildConfiguration }} --no-restore --framework ${{ inputs.lambdaRuntimeVersion }} --output-package "$ZIP_PATH"
           done
 
@@ -369,7 +397,7 @@ jobs:
               exit 1
             fi
 
-            SITE_OUT="${{ env.outputPath }}/$OUTPUT_SUBDIR"
+            SITE_OUT="${{ env.TEMPLATE_OUTPUT_PATH }}/$OUTPUT_SUBDIR"
             rm -rf "$SITE_OUT"
             mkdir -p "$SITE_OUT"
             cp -a "$BUILD_OUT/." "$SITE_OUT/"
@@ -421,11 +449,12 @@ jobs:
 
       - name: Configure AWS Credentials via OIDC
         if: inputs.runCdk == true
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           audience: sts.amazonaws.com
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::403542860824:role/github-deploy-role
+          aws-region: ${{ inputs.awsRegion }}
+          role-to-assume: ${{ steps.aws-role.outputs.role-arn }}
+          mask-aws-account-id: true
 
       - name: Run AWS CDK Deploy
         if: inputs.runCdk == true
