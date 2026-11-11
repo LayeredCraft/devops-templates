@@ -71,7 +71,7 @@ jobs:
           printf 'package_version=%s\n' "$package_version" | tee -a "$GITHUB_OUTPUT"
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
 

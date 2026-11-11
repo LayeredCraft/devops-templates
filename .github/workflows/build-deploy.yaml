@@ -166,7 +166,7 @@ jobs:
 
       - name: Setup .NET
         if: env.NEEDS_DOTNET == 'true'
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
 

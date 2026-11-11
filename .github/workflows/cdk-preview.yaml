@@ -183,7 +183,7 @@ jobs:
 
       - name: Setup .NET
         if: inputs.dotnetVersion != '' || inputs.globalJsonFile != ''
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: ${{ inputs.dotnetVersion }}
           global-json-file: ${{ inputs.globalJsonFile }}
