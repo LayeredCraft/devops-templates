@@ -265,7 +265,7 @@ To satisfy the policy, the `NuGet/login` OIDC exchange must happen in a job that
 
 ### How it works
 
-The `publish-preview.yml` and `publish-release.yml` shared workflows handle everything up to and including packing, then upload the `.nupkg` files as a GitHub Actions artifact. The caller is responsible for a separate `push` job that uses the `nuget-push` composite action:
+The `publish-preview.yml` and `publish-release.yml` shared workflows handle everything up to and including packing, then upload the `.nupkg` and generated `.snupkg` files as a GitHub Actions artifact. The caller is responsible for a separate `push` job that uses the `nuget-push` composite action:
 
 ```
 build job (shared workflow)     → resolve version, build, test, pack, upload-artifact
@@ -278,9 +278,12 @@ Located at `.github/actions/nuget-push/action.yml`. Handles the full push flow i
 
 1. Exchange GitHub OIDC token for a temporary NuGet API key via `NuGet/login@v1`
 2. Download the `nuget-packages` artifact produced by the build job
-3. Push all `.nupkg` files to NuGet.org
+3. Push all `.nupkg` files to NuGet.org, including matching `.snupkg` files from the same directory
 
 Because it is a **composite action** (not a reusable workflow), it runs inline inside the caller's job — so `job_workflow_ref` remains the caller's workflow path.
+
+The publishing artifact self-test uploads the paths read from both workflows and verifies that
+primary and symbol packages survive download. It does not publish to NuGet.
 
 ### Caller setup
 

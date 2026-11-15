@@ -92,4 +92,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
-          path: artifacts/**/*.nupkg
+          path: |
+            artifacts/**/*.nupkg
+            artifacts/**/*.snupkg
