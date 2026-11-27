@@ -1,0 +1,71 @@
+name: Self-test Publish Artifacts
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/publish-release.yml
+      - .github/workflows/publish-preview.yml
+      - .github/workflows/self-test-publish-artifacts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workflow: [release, preview]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml==6.0.2
+      - name: Prepare packages and read publishing paths
+        id: paths
+        env:
+          WORKFLOW: ${{ matrix.workflow }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import yaml
+
+          source = Path(f".github/workflows/publish-{os.environ['WORKFLOW']}.yml")
+          workflow = yaml.safe_load(source.read_text())
+          uploads = [step for job in workflow["jobs"].values() for step in job.get("steps", [])
+                     if step.get("uses", "").startswith("actions/upload-artifact@")]
+          assert len(uploads) == 1, "Expected one publishing artifact upload"
+          paths = uploads[0]["with"]["path"]
+          Path("artifacts").mkdir()
+          for extension in ("nupkg", "snupkg"):
+              Path(f"artifacts/SelfTest.1.0.0.{extension}").write_text("fixture\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"paths<<ARTIFACT_PATHS\n{paths}\nARTIFACT_PATHS\n")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: symbols-${{ matrix.workflow }}
+          path: ${{ steps.paths.outputs.paths }}
+          if-no-files-found: error
+          retention-days: 1
+
+  download:
+    needs: upload
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workflow: [release, preview]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: symbols-${{ matrix.workflow }}
+          path: restored
+      - name: Verify package and symbols survived transfer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          expected = {"SelfTest.1.0.0.nupkg", "SelfTest.1.0.0.snupkg"}
+          actual = {path.name for path in Path("restored").rglob("*") if path.is_file()}
+          assert actual == expected, f"Artifact transfer mismatch: {actual}"
+          PY
